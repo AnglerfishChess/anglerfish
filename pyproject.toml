@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "anglerfish"
+version = "0.1.0"
+description = "AI-based chess toolkit"
+authors = ["Alex Myodov <amyodov@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+stockfish = "^3.28.0"
+aiohttp = "^3.11.13"
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^9.0.1"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
