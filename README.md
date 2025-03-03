@@ -1,11 +1,10 @@
 # Anglerfish
 
-
 ## Environment usage
 
 First-time Python setup:
 ```sh
-poetry env use 3.13
+poetry env use 3.12
 ```
 
 Then, each time when you need the shell, just run:
