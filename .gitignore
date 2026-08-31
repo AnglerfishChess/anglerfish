@@ -47,3 +47,4 @@ coverage
 data-external/
 *.pyc
 *.pyo
+.venv/

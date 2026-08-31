@@ -1,23 +1,41 @@
-[tool.poetry]
+[project]
 name = "anglerfish"
 version = "0.1.0"
 description = "AI-based chess toolkit"
-authors = ["Alex Myodov <amyodov@gmail.com>"]
 readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "Alexander Myodov", email = "amyodov@gmail.com" },
+]
+dependencies = [
+    "aiohttp>=3.11.13,<4",
+    "stockfish>=3.28.0,<4",
+    "torch>=2.2.2,<2.3",
+    "zstandard>=0.23.0,<1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-aiohttp = "^3.11.13"
-stockfish = "^3.28.0"
-torch = "^2.2.2"
-zstandard = "^0.23.0"
-
-[tool.poetry.group.dev.dependencies]
-ipython = "^9.0.1"
-
-[tool.poetry.group.test.dependencies]
-pytest = "^8.3.5"
+[dependency-groups]
+dev = [
+    "ipython>=9.0.1",
+]
+test = [
+    "pytest>=8.3.5",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pyanglerfish"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.pyrefly]
+python-version = "3.12"
+
+[tool.pytest.ini_options]
+addopts = "-ra"

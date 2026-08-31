@@ -1,20 +1,17 @@
 # Anglerfish
 
+AI-based chess toolkit.
+
 ## Environment usage
 
-First-time Python setup:
+Install dependencies (creates `.venv` automatically):
 ```sh
-poetry env use 3.12
+uv sync --all-groups
 ```
 
-Then, each time when you need the shell, just run:
+Run the CLI:
 ```sh
-eval $(poetry env activate)
-```
-
-Install dependencies:
-```sh
-poetry install --with=dev --with=test --no-root
+uv run python -m pyanglerfish.anglerfish --help
 ```
 
 © 2025 Alexander Myodov (amyodov@gmail.com).
