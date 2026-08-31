@@ -1,13 +1,15 @@
+import io
+import json
+from pathlib import Path
+from typing import Iterator
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-import json
-import io
 import zstandard as zstd
 from stockfish import Stockfish
-from pathlib import Path
-from typing import Iterator
+from torch.utils.data import DataLoader, Dataset
+
 
 class ChessDataset(Dataset):
     """
@@ -15,6 +17,7 @@ class ChessDataset(Dataset):
 
     :param data_file: Path to the dataset file (Zstandard-compressed JSON lines).
     """
+
     def __init__(self, data_file: Path):
         self.data_file = data_file
 
@@ -75,6 +78,7 @@ class ChessNet(nn.Module):
     """
     A simple neural network for chess position evaluation.
     """
+
     def __init__(self, input_size: int = 768, hidden_size: int = 256, output_size: int = 1):
         super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
@@ -87,7 +91,9 @@ class ChessNet(nn.Module):
         return x
 
 
-def ui_train_network(data_path: Path, model_save_path: Path, epochs: int = 10, batch_size: int = 32, learning_rate: float = 0.001):
+def ui_train_network(
+    data_path: Path, model_save_path: Path, epochs: int = 10, batch_size: int = 32, learning_rate: float = 0.001
+):
     """
     Trains a neural network using chess positions and evaluations.
 

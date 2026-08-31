@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+import argparse
+import asyncio
 import io
+import json
 import os
 import sys
 from datetime import timedelta
@@ -7,13 +10,8 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Final
 
-import asyncio
-import argparse
-import json
-
 import aiohttp
 import zstandard as zstd
-
 from aiohttp import ClientTimeout
 
 EVAL_URL: Final[str] = "https://database.lichess.org/lichess_db_eval.jsonl.zst"
@@ -88,8 +86,7 @@ async def ui_download_file(url: str, dest_dir: Path, force: bool = False) -> Non
 
                             progress = (downloaded_size / total_size) * 100 if total_size else 0
                             sys.stdout.write(
-                                f"\rDownload progress: {progress:.01f}%, "
-                                f"{downloaded_size} of {total_size} byte(s)."
+                                f"\rDownload progress: {progress:.01f}%, {downloaded_size} of {total_size} byte(s)."
                             )
                             sys.stdout.flush()
 
@@ -193,10 +190,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Anglerfish CLI")
     parser.add_argument("--download-evaluations", action="store_true", help="Download the Lichess evaluations file.")
     parser.add_argument("--print-evaluations", action="store_true", help="Print the Lichess evaluations data.")
-    parser.add_argument("--train-network", action="store_true", help="Train the Pytorch network on the evaluations data.")
     parser.add_argument(
-        "--force", "-f", action="store_true", help="Force the download without waiting or resuming."
+        "--train-network", action="store_true", help="Train the Pytorch network on the evaluations data."
     )
+    parser.add_argument("--force", "-f", action="store_true", help="Force the download without waiting or resuming.")
     args = parser.parse_args()
 
     if args.download_evaluations:
