@@ -14,4 +14,6 @@ Run the CLI:
 uv run python -m pyanglerfish.anglerfish --help
 ```
 
-© 2025 Alexander Myodov (amyodov@gmail.com).
+## License
+
+MIT — see [LICENSE](LICENSE).
