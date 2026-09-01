@@ -48,3 +48,6 @@ data-external
 *.pyc
 *.pyo
 .venv/
+
+# Rust
+target/
