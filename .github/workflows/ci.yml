@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: rs_anglerfish
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to the workspace's rust-version so clippy findings are reproducible.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.1"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rs_anglerfish
+      - run: cargo build --release
+      - run: cargo test
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  perft:
+    # Billions of nodes: once per run, not once per platform.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rs_anglerfish
+      - run: cargo test --release -- --ignored
+
+  licences:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rs_anglerfish
+      - name: Every dependency carries a permissive licence
+        run: |
+          cat > check_licences.py <<'PY'
+          import json, sys
+
+          ALLOWED = {
+              "MIT", "MIT-0", "Apache-2.0", "Apache-2.0 WITH LLVM-exception",
+              "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "BSL-1.0",
+              "Unlicense", "0BSD", "CC0-1.0",
+          }
+
+          bad = []
+          for package in json.load(sys.stdin)["packages"]:
+              expression = (package.get("license") or "").replace("/", " OR ")
+              terms = [t.strip(" ()") for t in expression.split(" OR ")]
+              if not any(t in ALLOWED for t in terms):
+                  bad.append("%s %s | %s" % (package["name"], package["version"],
+                                             package.get("license")))
+          print("\n".join(bad) if bad else "every dependency is permissive")
+          sys.exit(1 if bad else 0)
+          PY
+          cargo metadata --format-version 1 | python3 check_licences.py
