@@ -44,7 +44,7 @@ coverage
 
 # Project-specific
 *nogit*
-data-external/
+data-external
 *.pyc
 *.pyo
 .venv/
