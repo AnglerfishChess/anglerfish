@@ -594,10 +594,11 @@ def king(scan: Scan, w: Writer) -> None:
         w.count(attackers[side], 6.0)
     for side in (0, 1):
         w.count(weight[side], 16.0)
+    guarded = [set().union(*(scan.by_role[side][role] for role in COUNTED_ROLES)) for side in (0, 1)]
     for side in (0, 1):
-        w.count(len(rings[side] & scan.by[side]), 8.0)
+        w.count(len(rings[side] & guarded[side]), 8.0)
     for side in (0, 1):
-        w.count(len((rings[side] & scan.by[1 - side]) - scan.by[side]), 8.0)
+        w.count(len((rings[side] & scan.by[1 - side]) - guarded[side]), 8.0)
     for side in (0, 1):
         w.count(len(rings[side] - scan.units[side] - scan.by[1 - side]), 8.0)
     for side in (0, 1):
