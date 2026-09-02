@@ -19,6 +19,7 @@ from .moves import move_index
 from .scale import fit_scale, win_probability
 
 __all__ = [
+    "SCALE_ROWS",
     "Counts",
     "DataConfig",
     "EvalBatches",
@@ -26,11 +27,16 @@ __all__ = [
     "Split",
     "collate",
     "fit_scale_on_dump",
+    "holdout_keys",
+    "position_key",
     "resolve_groups",
 ]
 
 #: Which side of the deterministic record-index split a row belongs to.
 Split = Literal["train", "holdout"]
+
+#: Centipawn labels the value scale is fitted on, where the fit settles.
+SCALE_ROWS = 400_000
 
 
 def resolve_groups(groups: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -105,6 +111,33 @@ def _wanted(index: int, config: DataConfig, split: Split) -> bool:
     return holdout if split == "holdout" else not holdout
 
 
+def _batch_stop(start: int, size: int, config: DataConfig) -> int:
+    """How many rows of a batch starting at `start` are within `max_rows`."""
+    if config.max_rows is None:
+        return size
+    return max(0, min(size, config.max_rows - start))
+
+
+def position_key(fen: str) -> str:
+    """The position a FEN names, without its clocks.
+
+    Placement, side to move, castling rights and en-passant square, joined by
+    spaces. Two FENs share a key exactly when they are the same position at
+    possibly different move counts.
+    """
+    return " ".join(fen.split(" ", 4)[:4])
+
+
+def holdout_keys(config: DataConfig) -> frozenset[str]:
+    """The `position_key`s of every held-out candidate of the dump."""
+    keys: set[str] = set()
+    for start, batch in _dump_batches(config):
+        for row in range(_batch_stop(start, len(batch), config)):
+            if _wanted(start + row, config, "holdout"):
+                keys.add(position_key(batch.fens[row]))
+    return frozenset(keys)
+
+
 def _shuffled(samples: Iterator[Sample], size: int, rng: random.Random) -> Iterator[Sample]:
     if size <= 1:
         yield from samples
@@ -148,21 +181,36 @@ def collate(samples: list[Sample]) -> dict[str, torch.Tensor]:
 
 @dataclass
 class Counts:
-    """How many rows the dump offered, and what became of them."""
+    """How many rows the dump offered, and what became of them.
+
+    `read` counts the split's candidates by index. `duplicate`, `leaked` and
+    `unmatched` are the ones dropped and `kept` the ones handed out; they add
+    up to `read` over a stream read to its end.
+    """
 
     read: int = 0
     kept: int = 0
+    #: The labelled best move was not among the legal moves.
     unmatched: int = 0
+    #: The position was already held out under an earlier index.
+    duplicate: int = 0
+    #: A training candidate whose position is in the held-out set.
+    leaked: int = 0
 
 
 class EvalBatches(IterableDataset[dict[str, torch.Tensor]]):
     """Collated batches of one split of an evaluation dump.
 
-    Iterating restarts at the head of the dump; the split a record falls in is
-    a function of its index in the dump reader's output, so it is the same for
-    every pass over the same file at the same `min_depth`. A row whose
-    labelled best move is not among the position's legal moves is dropped and
-    counted in `counts.unmatched`.
+    Iterating restarts at the head of the dump; which split a record is a
+    candidate for is a function of its index in the dump reader's output, so it
+    is the same for every pass over the same file at the same `min_depth`.
+
+    The held-out split keeps a candidate only the first time its `position_key`
+    is seen; the training split drops every candidate whose key is held out.
+    That key set is `holdout`, or one read from the dump on first use.
+
+    A row whose labelled best move is not among the position's legal moves is
+    dropped too. `counts` says how many rows went each way.
     """
 
     def __init__(
@@ -172,34 +220,62 @@ class EvalBatches(IterableDataset[dict[str, torch.Tensor]]):
         scale: float,
         split: Split = "train",
         shuffle: bool = True,
+        holdout: frozenset[str] | None = None,
     ) -> None:
         self.config = config
         self.scale = scale
         self.split = split
         self.shuffle = shuffle
         self.counts = Counts()
+        self._holdout = holdout
+
+    def holdout(self) -> frozenset[str]:
+        """The keys of the held-out positions, read from the dump when needed."""
+        if self._holdout is None:
+            self._holdout = holdout_keys(self.config)
+        return self._holdout
+
+    def _candidates(self, start: int, batch: Batch, seen: set[str]) -> list[int]:
+        """The batch rows this split takes, purity filters applied."""
+        config = self.config
+        held = self.holdout() if self.split == "train" else None
+        chosen: list[int] = []
+        for row in range(_batch_stop(start, len(batch), config)):
+            if not _wanted(start + row, config, self.split):
+                continue
+            self.counts.read += 1
+            key = position_key(batch.fens[row])
+            if held is not None:
+                if key in held:
+                    self.counts.leaked += 1
+                    continue
+            elif key in seen:
+                self.counts.duplicate += 1
+                continue
+            else:
+                seen.add(key)
+            chosen.append(row)
+        return chosen
 
     def samples(self) -> Iterator[Sample]:
         """The split's rows, one position at a time, in dump order."""
         config = self.config
+        seen: set[str] = set()
         for start, batch in _dump_batches(config):
+            chosen = self._candidates(start, batch, seen)
+            if not chosen:
+                continue
             values = win_probability(batch.cp, batch.mate, self.scale)
-            for row, fen in enumerate(batch.fens):
-                index = start + row
-                if not _wanted(index, config, self.split):
-                    continue
-                if config.max_rows is not None and index >= config.max_rows:
-                    return
-                self.counts.read += 1
-                moves, move_features = esca.encode_moves(fen)
-                best = move_index(moves, batch.best_moves[row])
+            moves, move_features, cuts = esca.encode_moves([batch.fens[row] for row in chosen])
+            for slot, row in enumerate(chosen):
+                best = move_index(moves[slot], batch.best_moves[row])
                 if best is None:
                     self.counts.unmatched += 1
                     continue
                 self.counts.kept += 1
                 yield Sample(
                     features=batch.features[row].copy(),
-                    moves=move_features,
+                    moves=move_features[cuts[slot] : cuts[slot + 1]],
                     best=best,
                     value=float(values[row]),
                 )
@@ -218,8 +294,11 @@ class EvalBatches(IterableDataset[dict[str, torch.Tensor]]):
             yield collate(pending)
 
 
-def fit_scale_on_dump(config: DataConfig, *, rows: int = 100_000) -> float:
-    """The logistic scale fitted on up to `rows` held-out centipawn labels."""
+def fit_scale_on_dump(config: DataConfig, *, rows: int = SCALE_ROWS) -> float:
+    """The logistic scale fitted on up to `rows` centipawn labels.
+
+    Only held-out candidates count, so the fit never sees a training label.
+    """
     labels: list[NDArray[np.float32]] = []
     taken = 0
     for start, batch in _dump_batches(config):

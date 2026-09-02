@@ -28,8 +28,8 @@ def win_probability(
 
     A row is a mate row where `mate` is not zero, and a centipawn row
     otherwise, matching the dump reader's convention. Centipawns pass through
-    `sigmoid(cp / scale)`; a mate in `n` becomes `±(1 − n / MATE_HORIZON)` on
-    the [−1, 1] scale, rescaled to [0, 1].
+    `sigmoid(cp / scale)`; a mate in `n` becomes `+/-(1 - n / MATE_HORIZON)` on
+    the [-1, 1] scale, rescaled to [0, 1].
     """
     cp = np.asarray(cp, dtype=np.float64)
     mate = np.asarray(mate, dtype=np.float64)

@@ -17,7 +17,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .data import DataConfig, EvalBatches, fit_scale_on_dump, resolve_groups
+from .data import SCALE_ROWS, DataConfig, EvalBatches, fit_scale_on_dump, holdout_keys, resolve_groups
 from .model import NetConfig, TwoHeadNet
 
 __all__ = [
@@ -210,7 +210,10 @@ def train(
     optimiser = torch.optim.AdamW(net.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     scheduler = _schedule(optimiser, config)
 
-    training = EvalBatches(data, scale=scale, split="train")
+    held_out = holdout_keys(data)
+    if log:
+        print(f"held-out positions {len(held_out)}")
+    training = EvalBatches(data, scale=scale, split="train", holdout=held_out)
     holdout = EvalBatches(data, scale=scale, split="holdout", shuffle=False)
     held = list(itertools.islice(iter(holdout), config.eval_batches))
     if not held:
@@ -251,8 +254,9 @@ def train(
         counts = training.counts
         print(
             f"train rows read {counts.read}, kept {counts.kept}, "
-            f"best move not legal {counts.unmatched}; "
-            f"held-out rows read {holdout.counts.read}, unmatched {holdout.counts.unmatched}"
+            f"held out elsewhere {counts.leaked}, best move not legal {counts.unmatched}; "
+            f"held-out rows read {holdout.counts.read}, kept {holdout.counts.kept}, "
+            f"repeated {holdout.counts.duplicate}, unmatched {holdout.counts.unmatched}"
         )
     return metrics
 
@@ -280,7 +284,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy-hidden", type=int, default=128)
     parser.add_argument("--dropout", type=float, default=0.0)
     parser.add_argument("--scale", type=float, help="the logistic value scale; fitted when absent")
-    parser.add_argument("--scale-rows", type=int, default=20000, help="held-out labels the scale is fitted on")
+    parser.add_argument("--scale-rows", type=int, default=SCALE_ROWS, help="held-out labels the scale is fitted on")
     parser.add_argument("--checkpoint", type=Path, help="where to write the checkpoint")
     parser.add_argument("--resume", type=Path, help="a checkpoint to continue from")
     parser.add_argument("--device", default="auto")

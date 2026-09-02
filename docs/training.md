@@ -14,7 +14,8 @@ lichess_db_eval.jsonl.zst
        │   fens, features (n, w), cp (n,), mate (n,), best_moves
        ▼
   pyanglerfish.data.EvalBatches
-       │   esca.encode_moves(fen) → the legal moves and their (m, 24) rows
+       │   esca.encode_moves(fens) → per FEN the legal moves, their rows
+       │                          stacked (total, 24), and the cuts (n + 1,)
        │   move_index(moves, best_move) → the policy target
        │   win_probability(cp, mate, scale) → the value target
        ▼
@@ -28,11 +29,41 @@ such evaluation, an unreachable placement or an unreadable line; the dataset
 drops a row whose labelled best move is absent from the legal move list and
 counts it in `counts.unmatched`.
 
+One `esca.encode_moves` call covers a whole read batch: the rows come back
+stacked into one array with the offsets that cut it, so a sample holds a view
+of it rather than an array of its own, and the move encoding runs on every
+core the way the feature encoding does.
+
+### The split, and keeping it clean
+
 Rows are split by their index in the reader's output: one index in
-`holdout_every` is held out, the rest train. The split is the same on every
-pass over the same file at the same `min_depth`, so the held-out slice never
-reaches the optimiser. Training rows pass through a reservoir shuffle buffer;
-held-out rows are read in dump order.
+`holdout_every` is a held-out candidate, the rest are training candidates. The
+split is the same on every pass over the same file at the same `min_depth`.
+
+Positions repeat across the dump, so the index split alone would leak. Two
+filters run on top of it, both keyed on the FEN without its clocks —
+placement, side to move, castling rights and en-passant square, which
+`position_key` cuts out:
+
+- a held-out candidate is kept only the first time its key is seen, so the
+  slice holds each position once;
+- a training candidate whose key is held out is dropped.
+
+`lichess_db_eval` carries one record per position, so on it the filters cost
+nothing: over its first 2 000 000 rows at `min_depth 20`, all 31 250 held-out
+candidates and all 1 968 750 training candidates have distinct keys and none
+is dropped. The filters hold for a source that repeats itself.
+
+The second filter needs every held-out key before the first training row is
+handed out, so `holdout_keys` reads the dump through once and keeps them in a
+set — one extra pass, and memory linear in the held-out slice. `train()` makes
+that pass and hands the set to the training split; the held-out split needs
+only the keys it has already passed.
+
+`counts` partitions the candidates a split saw: `kept`, `duplicate` (a
+held-out repeat), `leaked` (a training row held out elsewhere) and
+`unmatched`. Training rows pass through a reservoir shuffle buffer; held-out
+rows are read in dump order.
 
 ## 2. Targets
 
@@ -41,12 +72,25 @@ held-out rows are read in dump order.
 | value | `sigmoid(cp / s)` for a centipawn row; `0.5·(1 ± (1 − n/1000))` for a mate in `n`. Side-relative, in [0, 1]. |
 | policy | The index of the labelled best move among the legal moves, in `encode_moves` order. |
 
-`s` is fitted once, on centipawn labels from the held-out slice, as the
+`s` is fitted once, on centipawn labels from the held-out candidates, as the
 maximum-likelihood scale of a zero-centred logistic
 (`s = mean(|cp| · tanh(|cp| / 2s))`, a fixed point reached in a few dozen
 iterations). Under that fit the targets spread evenly over [0, 1] instead of
 piling up around 0.5. The fitted value goes into the checkpoint; passing
 `--scale` skips the fit.
+
+The dump's prefix is not the dump, so a small sample fits the prefix rather
+than the corpus:
+
+| `--scale-rows` | dump rows read | fitted `s` | against 1M |
+|---|---|---|---|
+| 20 000 | 1.5 M | 249.9 | +12.0 % |
+| 100 000 | 7.6 M | 247.2 | +10.8 % |
+| 400 000 | 30.0 M | 231.0 | +3.6 % |
+| 1 000 000 | 74.2 M | 223.0 | — |
+
+The default is 400 000: the smallest of those within 5 % of the million-label
+fit.
 
 ## 3. The net
 
@@ -107,8 +151,9 @@ uv run python -m pyanglerfish.train \
 
 `--resume runs/v0.pt` continues from a checkpoint, keeping its scale and net
 shape. `--groups state,material,…` trains on a subset of the schema; the
-checkpoint records which. Reading and encoding the dump is Rust and parallel;
-the per-position `encode_moves` call is not, and is the throughput limit.
+checkpoint records which. Reading and encoding the dump is Rust and parallel,
+move encoding included. A run reads the dump once for the held-out keys and
+once for the scale fit before the first optimiser step.
 
 ## 6. Metrics
 

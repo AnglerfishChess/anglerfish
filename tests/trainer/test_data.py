@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import esca
+import numpy as np
 import pytest
 import torch
 
@@ -108,3 +109,74 @@ def test_the_shuffle_buffer_keeps_every_row(sample_dump: Path) -> None:
 def test_the_fitted_scale_is_positive(sample_dump: Path) -> None:
     settings = config(sample_dump, holdout_every=1)
     assert data_module.fit_scale_on_dump(settings, rows=64) > 0.0
+
+
+START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+AFTER_NC6 = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2"
+
+
+class StubBatch:
+    """What `EvalBatches` reads out of a dump batch, over given FENs."""
+
+    def __init__(self, fens: list[str], width: int) -> None:
+        self.fens = fens
+        self.features = np.zeros((len(fens), width), dtype=np.float32)
+        self.cp = np.full(len(fens), 25.0, dtype=np.float32)
+        self.mate = np.zeros(len(fens), dtype=np.float32)
+        self.best_moves = [esca.encode_moves(fen)[0][0] for fen in fens]
+
+    def __len__(self) -> int:
+        return len(self.fens)
+
+
+@pytest.fixture
+def stub_dump(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A dump of six rows, three of them the same position at other clocks."""
+    fens = [
+        START,
+        AFTER_E4,
+        START,
+        AFTER_NC6,
+        START.replace(" 0 1", " 4 7"),
+        START.replace(" 0 1", " 6 9"),
+    ]
+
+    def batches(settings: DataConfig) -> Any:
+        yield 0, StubBatch(fens, settings.width)
+
+    monkeypatch.setattr(data_module, "_dump_batches", batches)
+    return fens
+
+
+def test_a_position_key_drops_the_clocks(stub_dump: list[str]) -> None:
+    assert data_module.position_key(START) == data_module.position_key(stub_dump[4])
+    assert data_module.position_key(START) != data_module.position_key(AFTER_E4)
+    assert data_module.position_key(START) == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
+
+
+def test_the_held_out_slice_keeps_one_row_per_position(sample_dump: Path, stub_dump: list[str]) -> None:
+    settings = config(sample_dump, holdout_every=2)
+    dataset = EvalBatches(settings, scale=SCALE, split="holdout", shuffle=False)
+    kept = list(dataset.samples())
+    assert len(kept) == 1
+    assert dataset.counts.read == 3
+    assert dataset.counts.duplicate == 2
+    assert data_module.holdout_keys(settings) == {data_module.position_key(START)}
+
+
+def test_a_training_row_of_a_held_out_position_is_dropped(sample_dump: Path, stub_dump: list[str]) -> None:
+    settings = config(sample_dump, holdout_every=2)
+    dataset = EvalBatches(settings, scale=SCALE, split="train", shuffle=False)
+    kept = list(dataset.samples())
+    assert [len(sample.moves) for sample in kept] == [20, 30]
+    assert dataset.counts.read == 3
+    assert dataset.counts.leaked == 1
+    assert dataset.counts.kept == 2
+
+
+def test_a_samples_move_rows_are_its_own(sample_dump: Path, stub_dump: list[str]) -> None:
+    settings = config(sample_dump, holdout_every=2)
+    dataset = EvalBatches(settings, scale=SCALE, split="train", shuffle=False)
+    for sample, fen in zip(dataset.samples(), (AFTER_E4, AFTER_NC6), strict=True):
+        assert np.array_equal(sample.moves, esca.encode_moves(fen)[1])

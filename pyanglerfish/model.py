@@ -48,7 +48,7 @@ class TwoHeadNet(nn.Module):
     `forward` takes the position features `(b, input_width)`, the per-move
     features `(b, m, move_width)` and a boolean legality mask `(b, m)`, and
     returns the value logit `(b,)` and the move scores `(b, m)`, the illegal
-    entries of which are −inf. Every row must carry at least one legal move.
+    entries of which are -inf. Every row must carry at least one legal move.
     """
 
     def __init__(self, config: NetConfig) -> None:
