@@ -37,6 +37,9 @@ packages = ["pyanglerfish"]
 line-length = 120
 target-version = "py312"
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PT", "RUF"]
+
 [tool.pyrefly]
 python-version = "3.12"
 search-path = [".", "tests"]

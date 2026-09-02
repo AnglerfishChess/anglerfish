@@ -46,7 +46,7 @@ def test_distinguishes_promotion_roles() -> None:
     assert move_index(moves, esca.Move("a7", "a8")) is None
 
 
-@pytest.mark.parametrize("origin,destination", [("e2", "e5"), ("d4", "d5")])
+@pytest.mark.parametrize(("origin", "destination"), [("e2", "e5"), ("d4", "d5")])
 def test_absent_move_is_none(origin: str, destination: str) -> None:
     assert move_index(moves_of(START), esca.Move(origin, destination)) is None
 

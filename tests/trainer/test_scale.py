@@ -41,7 +41,7 @@ def test_the_fit_recovers_a_known_scale() -> None:
 
 
 def test_the_fit_needs_a_label() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least one centipawn label"):
         fit_scale(np.array([], dtype=np.float32))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="a label that is not zero"):
         fit_scale(np.zeros(16, dtype=np.float32))

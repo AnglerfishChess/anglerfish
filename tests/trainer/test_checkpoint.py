@@ -42,5 +42,5 @@ def test_a_foreign_schema_is_refused(tmp_path: Path) -> None:
     stored["schema_id"] = "0" * 32
     torch.save(stored, path)
 
-    with pytest.raises(ValueError, match="0{32}"):
+    with pytest.raises(ValueError, match=r"0{32}"):
         load_checkpoint(path)

@@ -55,7 +55,7 @@ def cases(fens: str, binary: str, variant: str) -> list[tuple[str, list[float], 
     positions = corpus(fens)
     expected = vectors(binary)
     assert len(positions) == len(expected), "corpus and fixture disagree"
-    pairs = list(zip(positions, expected))
+    pairs = list(zip(positions, expected, strict=True))
     if limit is not None:
         pairs = pairs[:limit]
     return [(fen, values, variant) for fen, values in pairs]
