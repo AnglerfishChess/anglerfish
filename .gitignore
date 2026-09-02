@@ -47,7 +47,13 @@ coverage
 data-external
 *.pyc
 *.pyo
+__pycache__/
+.pytest_cache/
 .venv/
+
+# The compiled esca extension, built in place by an editable install
+*.so
+*.pyd
 
 # Rust
 target/

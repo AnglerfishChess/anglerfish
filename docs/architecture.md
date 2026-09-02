@@ -36,9 +36,9 @@ note.
 ## 2. Dependency graph
 
 ```
-   cozy-chess (MIT)   pyo3, numpy      zstd, serde_json
-          |            (feature         (feature
-          |             python)          lichess)
+   cozy-chess (MIT)   pyo3, numpy,     zstd, serde_json
+          |            rayon            (feature
+          |            (feature python)  lichess)
           |               |                 |
           +───────────── esca ──────────────+
                           |
@@ -148,13 +148,19 @@ rs_anglerfish/esca/
   src/                  Rust, including the PyO3 module behind feature `python`
   python/esca/
     __init__.py         re-exports the compiled extension
-    __init__.pyi        stubs for the whole public surface
+    __init__.pyi        what the package exports
+    _esca.pyi           stubs for the whole compiled surface
+    lichess.py          the dump batches, re-exported
+    lichess.pyi
     py.typed
+  python/tests/         the Python side's tests
 ```
 
 Import name and distribution name are both `esca`. Wheels are built with
-`--features python,lichess`; `abi3` from the lowest supported CPython, so one
-wheel per platform covers every version.
+`--features python,lichess,pyo3/extension-module`, the last of which a test
+binary must not have, because it resolves the interpreter's symbols itself;
+`abi3` from the lowest supported CPython, so one wheel per platform covers
+every version.
 
 The root `anglerfish` project stays hatchling and pure-Python, and depends on
 `esca` as a local editable source:

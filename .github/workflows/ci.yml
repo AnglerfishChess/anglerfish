@@ -23,10 +23,33 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --only-group test --no-install-project
-      - run: uv run --no-sync pytest
+      - run: uv run --no-sync pytest tests
       - run: uvx ruff check tests
       - run: uvx ruff format --check tests
       - run: uvx pyrefly check tests
+
+  esca-python:
+    # The wheel is built from the crate by maturin, so this job needs cargo.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rs_anglerfish
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups
+      - run: uv run --no-sync pytest rs_anglerfish/esca/python/tests
+      - run: uvx ruff check rs_anglerfish
+      - run: uvx ruff format --check rs_anglerfish
+      - run: uvx pyrefly check rs_anglerfish/esca/python
 
   rust:
     strategy:
@@ -49,7 +72,7 @@ jobs:
       - run: cargo test --features lichess
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo clippy --all-targets --features lichess -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
 
   perft:
     # Billions of nodes: once per run, not once per platform.
