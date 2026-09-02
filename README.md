@@ -30,6 +30,11 @@ uvx ruff format --check .
 uvx pyrefly check
 ```
 
+Train the net over the Lichess evaluation dump — see [`docs/training.md`](docs/training.md):
+```sh
+uv run python -m pyanglerfish.train --help
+```
+
 ## Rust
 
 ```sh

@@ -10,7 +10,7 @@ The Rust side of Anglerfish: a Cargo workspace of small crates, one of which —
 ```
 anglerfish/
   pyproject.toml        hatchling, the pure-Python side
-  pyanglerfish/         trainer, data tooling, CLI
+  pyanglerfish/         the trainer: data, scale, model, train  (training.md)
   rs_anglerfish/        Cargo workspace root
     Cargo.toml          [workspace] members
     esca/               chess model + position facts + wheel     (public)
@@ -208,6 +208,6 @@ is a net to load.
 | Milestone | Contents |
 |---|---|
 | **M1** | `esca` core: `Variant` with `Classic` and `Chess960`, `Position`, `Game`, UCI and SAN move text, `Facts` with the v0 groups `state`, `material`, `pawns`, `pieces`, `king`, `mobility`, `attacks`, `tactics`, `planes`, `MoveFacts`, `Schema` and `schema_id`, batch encoding. Feature `python`: the module and its stubs. Feature `lichess`: the dump reader. `anglerfish-core` copied from anglerfry with the `Evaluator`/`Policy` traits and the material evaluator behind them. Differential, property, stability tests. Benchmarks. |
-| **M2** | `anglerfish-nn`, checkpoint format, schema check on load, the first trained net serving `Evaluator`. |
+| **M2** | The trainer of [`training.md`](training.md): the dump pipeline, the two-head net, the fitted value scale and the checkpoint manifest. Then `anglerfish-nn`, the schema check on load, and the first trained net serving `Evaluator`. |
 | **M3** | The search family, chosen on measurements: transposition table, time management, quiescence and SEE if alpha-beta wins; tree, PUCT and leaf batching if MCTS does. |
 | **M4** | Publishing `esca` to crates.io and PyPI, after the API has survived M2. Owner's decision, per repo policy. |
