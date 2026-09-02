@@ -323,13 +323,13 @@ class PawnFacts:
             self.unstoppable[side] = any(self.is_unstoppable(square, side) for square in passers)
 
         for file in range(8):
-            white = self.count_by_file[0][file] > 0
-            black = self.count_by_file[1][file] > 0
-            if not white and not black:
+            ours = self.count_by_file[0][file] > 0
+            theirs = self.count_by_file[1][file] > 0
+            if not ours and not theirs:
                 self.open_files.add(file)
-            if not white and black:
+            if not ours and theirs:
                 self.semi_open[0].add(file)
-            if not black and white:
+            if not theirs and ours:
                 self.semi_open[1].add(file)
 
         self.rams = sum(
