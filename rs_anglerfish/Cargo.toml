@@ -1,5 +1,5 @@
 [workspace]
-members = ["esca"]
+members = ["anglerfish-core", "esca"]
 resolver = "2"
 
 [workspace.package]
