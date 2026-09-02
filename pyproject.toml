@@ -21,6 +21,7 @@ dev = [
 ]
 test = [
     "pytest>=8.3.5",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.uv.sources]
@@ -45,5 +46,5 @@ python-version = "3.12"
 search-path = [".", "tests"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra -n 4"
 testpaths = ["tests", "rs_anglerfish/esca/python/tests"]
