@@ -62,6 +62,21 @@ jobs:
           workspaces: rs_anglerfish
       - run: cargo test --release -- --ignored
 
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rs_anglerfish
+      - uses: astral-sh/setup-uv@v5
+      - run: cargo build --release
+      # The engine must stay a conformant UCI citizen at every level it declares.
+      - run: uvx uci-test-suite ./target/release/anglerfish
+
   licences:
     runs-on: ubuntu-latest
     steps:
