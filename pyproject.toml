@@ -9,11 +9,10 @@ authors = [
     { name = "Alexander Myodov", email = "amyodov@gmail.com" },
 ]
 dependencies = [
-    "aiohttp>=3.11.13,<4",
     "esca",
-    "stockfish>=3.28.0,<4",
+    # torch 2.2 is the last x86-macOS build, and it is compiled against NumPy 1.
+    "numpy>=1.26,<2",
     "torch>=2.2.2,<2.3",
-    "zstandard>=0.23.0,<1",
 ]
 
 [dependency-groups]
