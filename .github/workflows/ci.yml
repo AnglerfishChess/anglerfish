@@ -23,13 +23,16 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --only-group test --no-install-project
-      - run: uv run --no-sync pytest tests
+      # The trainer tests need `esca` and torch, so they run in `esca-python`.
+      - run: uv run --no-sync pytest tests --ignore=tests/trainer
       - run: uvx ruff check tests
       - run: uvx ruff format --check tests
-      - run: uvx pyrefly check tests
+      - run: uvx pyrefly check tests/reference tests/test_reference_v0.py
 
   esca-python:
     # The wheel is built from the crate by maturin, so this job needs cargo.
+    # It is also the only job with the built `esca` and torch, so the trainer
+    # and the whole repository's type check belong here.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,10 +49,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups
-      - run: uv run --no-sync pytest rs_anglerfish/esca/python/tests
-      - run: uvx ruff check rs_anglerfish
-      - run: uvx ruff format --check rs_anglerfish
-      - run: uvx pyrefly check rs_anglerfish/esca/python
+      - run: uv run --no-sync pytest rs_anglerfish/esca/python/tests tests/trainer
+      - run: uvx ruff check .
+      - run: uvx ruff format --check .
+      - run: uvx pyrefly check
 
   rust:
     strategy:
