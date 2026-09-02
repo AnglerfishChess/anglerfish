@@ -180,7 +180,12 @@ fn answers_isready_while_searching_and_stops_once() {
     engine.send("position startpos");
     engine.send("go infinite");
     engine.send("isready");
-    assert_eq!(engine.line(TIMEOUT).as_deref(), Some("readyok"));
+    let lines = engine.until("readyok");
+    assert!(
+        lines[..lines.len() - 1]
+            .iter()
+            .all(|line| line.starts_with("info "))
+    );
 
     engine.send("stop");
     assert!(OPENINGS.contains(&engine.best_move().as_str()));
