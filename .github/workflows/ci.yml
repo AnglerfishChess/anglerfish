@@ -10,6 +10,24 @@ defaults:
     working-directory: rs_anglerfish
 
 jobs:
+  python:
+    # The differential reference is standard library only, so the project's own
+    # dependencies are not installed.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --only-group test --no-install-project
+      - run: uv run --no-sync pytest
+      - run: uvx ruff check tests
+      - run: uvx ruff format --check tests
+      - run: uvx pyrefly check tests
+
   rust:
     strategy:
       fail-fast: false
