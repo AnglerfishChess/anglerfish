@@ -58,28 +58,45 @@ jobs:
       fail-fast: false
       matrix:
         platform:
+          # `native` marks the wheel the runner itself can import; the other
+          # two are cross-built and only checked for shape.
           - runner: ubuntu-latest
             target: x86_64
+            native: true
           - runner: ubuntu-latest
             target: aarch64
           - runner: macos-latest
             target: x86_64
           - runner: macos-latest
             target: aarch64
+            native: true
           - runner: windows-latest
             target: x64
+            native: true
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/checkout@v4
       # One abi3-py312 wheel per platform: the extension is built against the
       # stable ABI, so the Python version on the runner does not select it.
+      # The feature set is the one esca/pyproject.toml declares; naming it
+      # here again would let the two drift.
       - uses: PyO3/maturin-action@v1
         with:
           working-directory: rs_anglerfish/esca
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --features python,lichess
+          args: --release --out dist
           manylinux: auto
           sccache: "true"
+      # A wheel that installs but lacks a module is the failure the version
+      # check cannot see: import every module the wheel must carry.
+      - if: matrix.platform.native
+        uses: astral-sh/setup-uv@v5
+      - if: matrix.platform.native
+        shell: bash
+        run: |
+          uv run --isolated --no-project --python 3.12 \
+            --with "$(ls rs_anglerfish/esca/dist/esca-*.whl)" \
+            python -c "import esca, esca.lichess, esca.pgn, esca.uci; print(esca.SCHEMA_ID)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.platform.runner }}-${{ matrix.platform.target }}
