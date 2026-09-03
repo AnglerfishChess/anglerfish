@@ -12,6 +12,13 @@
   says what the recent plies did: captures and checks in the last eight, the
   plies since either, the material trend over them, and what the last move
   moved, took and gave. A `Game` supplies them; a bare `Position` does not.
+- `pawns` gains the structure a player names out loud: the longest chain and
+  whether its base is under attack, the majority on each wing, the holes a
+  side can never cover again and the enemy minors sitting on them, fixed and
+  blockaded pawns, the lead passer's distance to promotion, both kings'
+  distances to its promotion square, whether the defending king is in its
+  square and whether its path is empty, the files semi-open at the enemy king,
+  and the backward pawns the enemy can actually attack.
 - `pieces.knights_on_outpost` becomes `pieces.minors_on_outpost`, which counts
   bishops too; `king.king_distance` drops the two distances two kings can
   never stand at; `state.repetition_available_them` is gone.

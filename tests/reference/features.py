@@ -352,11 +352,115 @@ class PawnFacts:
             if not theirs and ours:
                 self.semi_open[1].add(file)
 
-        self.rams = sum(
-            1
-            for square in self.pawns[0]
-            if scan.relative_square(file_of(square), scan.relative_rank(square, 0) + 1, 0) in self.pawns[1]
-        )
+        self.rams = sum(1 for square in self.pawns[0] if self.stop(square, 0) in self.pawns[1])
+
+        self.chain_max_length = [0, 0]
+        self.chain_base_attacked = [False, False]
+        self.majority_by_wing = [[False, False], [False, False]]
+        self.holes: list[set[int]] = [set(), set()]
+        self.holes_occupied = [0, 0]
+        self.fixed_pawns = [0, 0]
+        self.blocked_passers = [0, 0]
+        self.passer_distance: list[int | None] = [None, None]
+        self.passer_king_distance: list[list[int | None]] = [[None, None], [None, None]]
+        self.passer_in_square = [False, False]
+        self.passer_free_path = [0, 0]
+        self.half_open_at_enemy_king = [0, 0]
+        self.backward_on_semi_open = [0, 0]
+
+        for side in (0, 1):
+            ours = self.pawns[side]
+            theirs = self.pawns[1 - side]
+            passers = self.passed[side]
+
+            runs = self.chains(side)
+            self.chain_max_length[side] = max((len(run) for run in runs), default=0)
+            self.chain_base_attacked[side] = any(run[0] in scan.by[1 - side] for run in runs if len(run) >= 2)
+
+            for wing, files in enumerate((range(0, 4), range(4, 8))):
+                mine = sum(1 for square in ours if file_of(square) in files)
+                other_side = sum(1 for square in theirs if file_of(square) in files)
+                self.majority_by_wing[side][wing] = mine > other_side
+
+            self.holes[side] = self.holes_of(side)
+            minors = scan.role_units[1 - side]["n"] | scan.role_units[1 - side]["b"]
+            self.holes_occupied[side] = len(minors & self.holes[side])
+
+            self.fixed_pawns[side] = sum(1 for square in ours if self.stop(square, side) in scan.occupied)
+            self.blocked_passers[side] = sum(1 for square in passers if self.stop(square, side) in scan.units[1 - side])
+            self.passer_free_path[side] = sum(
+                1
+                for square in passers
+                if all(
+                    scan.relative_square(file_of(square), rank, side) not in scan.occupied
+                    for rank in range(scan.relative_rank(square, side) + 1, 9)
+                )
+            )
+
+            lead = self.lead_passer(side)
+            if lead is not None:
+                rank = scan.relative_rank(lead, side)
+                promotion = scan.relative_square(file_of(lead), 8, side)
+                defender = chebyshev(scan.kings[1 - side], promotion)
+                tempo = 1 if side == 1 else 0
+                self.passer_distance[side] = 8 - rank
+                self.passer_king_distance[side] = [chebyshev(scan.kings[side], promotion), defender]
+                self.passer_in_square[side] = max(defender - tempo, 0) <= 8 - rank
+
+            self.half_open_at_enemy_king[side] = sum(
+                1 for file in shield_files(file_of(scan.kings[1 - side])) if file in self.semi_open[side]
+            )
+            self.backward_on_semi_open[side] = sum(
+                1 for square in self.backward[side] if file_of(square) in self.semi_open[1 - side]
+            )
+
+    def stop(self, square: int, side: int) -> int:
+        """The square directly ahead of the pawn on ``square``."""
+        scan = self.scan
+        return scan.relative_square(file_of(square), scan.relative_rank(square, side) + 1, side)
+
+    def chains(self, side: int) -> list[list[int]]:
+        """Maximal runs of pawns each defending the next, one run per direction and rearmost pawn."""
+        scan = self.scan
+        ours = self.pawns[side]
+        runs: list[list[int]] = []
+        for step in (-1, 1):
+            for square in ours:
+                file, rank = file_of(square), scan.relative_rank(square, side)
+                behind = 0 <= file - step <= 7 and rank > 1
+                if behind and scan.relative_square(file - step, rank - 1, side) in ours:
+                    continue
+                run = [square]
+                while 0 <= file + step <= 7 and rank < 8:
+                    file, rank = file + step, rank + 1
+                    ahead = scan.relative_square(file, rank, side)
+                    if ahead not in ours:
+                        break
+                    run.append(ahead)
+                runs.append(run)
+        return runs
+
+    def holes_of(self, side: int) -> set[int]:
+        """The squares on relative ranks 3 to 6 no pawn of ``side`` can ever attack."""
+        scan = self.scan
+        lowest = [9] * 8
+        for square in self.pawns[side]:
+            file = file_of(square)
+            lowest[file] = min(lowest[file], scan.relative_rank(square, side))
+        out = set()
+        for square in range(64):
+            rank = scan.relative_rank(square, side)
+            if 3 <= rank <= 6 and not any(lowest[file] < rank for file in adjacent_files(file_of(square))):
+                out.add(square)
+        return out
+
+    def lead_passer(self, side: int) -> int | None:
+        """The most advanced passer, and among equals the one nearest file a."""
+        scan = self.scan
+        passers = self.passed[side]
+        if not passers:
+            return None
+        return max(passers, key=lambda square: (scan.relative_rank(square, side), -file_of(square)))
 
     def is_unstoppable(self, square: int, side: int) -> bool:
         scan = self.scan
@@ -404,6 +508,39 @@ def pawns(scan: Scan, facts: PawnFacts, w: Writer) -> None:
     for side in (0, 1):
         w.count(facts.levers[side], 4.0)
     w.count(facts.rams, 8.0)
+    for side in (0, 1):
+        w.count(facts.chain_max_length[side], 5.0)
+    for side in (0, 1):
+        w.bit(facts.chain_base_attacked[side])
+    for side in (0, 1):
+        for wing in (0, 1):
+            w.bit(facts.majority_by_wing[side][wing])
+    for side in (0, 1):
+        w.count(len(facts.holes[side]), 16.0)
+    for counts, scale in (
+        (facts.holes_occupied, 4.0),
+        (facts.fixed_pawns, 8.0),
+        (facts.blocked_passers, 2.0),
+    ):
+        for side in (0, 1):
+            w.count(counts[side], scale)
+    for side in (0, 1):
+        # No passer's promotion distance is 0, so 0 says the side has none.
+        distance = facts.passer_distance[side]
+        w.count(0 if distance is None else distance, 6.0)
+    for side in (0, 1):
+        # No distance on a board is 8, so 8 says the side has no passer.
+        for king in facts.passer_king_distance[side]:
+            w.count(8 if king is None else king, 8.0)
+    for side in (0, 1):
+        w.bit(facts.passer_in_square[side])
+    for counts, scale in (
+        (facts.passer_free_path, 2.0),
+        (facts.half_open_at_enemy_king, 3.0),
+        (facts.backward_on_semi_open, 4.0),
+    ):
+        for side in (0, 1):
+            w.count(counts[side], scale)
 
 
 # --------------------------------------------------------------------------
