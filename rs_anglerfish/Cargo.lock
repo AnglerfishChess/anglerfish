@@ -403,6 +403,7 @@ dependencies = [
  "blake3",
  "cozy-chess",
  "criterion",
+ "log",
  "numpy",
  "proptest",
  "pyo3",
