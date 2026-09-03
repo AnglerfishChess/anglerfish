@@ -12,8 +12,9 @@ import os
 import struct
 from pathlib import Path
 
+import esca
 import pytest
-from reference.features import encode
+from reference.features import encode, encode_moves
 
 DATA = Path(__file__).resolve().parents[1] / "rs_anglerfish" / "esca" / "tests" / "data"
 WIDTH = 1930
@@ -88,3 +89,21 @@ def test_chess960_rows_match_the_reference(fen: str, expected: list[float], vari
 
 def test_the_schema_the_reference_reads_is_as_wide_as_the_fixture() -> None:
     assert len(NAMES) == WIDTH
+
+
+#: The `move` schema has no fixture of its own: the two implementations are
+#: compared directly, on the first rows of each corpus.
+MOVE_ROWS = 8
+
+
+@pytest.mark.parametrize(
+    ("fen", "variant"),
+    [(fen, esca.CLASSIC) for fen in corpus("fens_classic.txt")[:MOVE_ROWS]]
+    + [(fen, esca.CHESS960) for fen in corpus("fens_chess960.txt")[:MOVE_ROWS]],
+)
+def test_move_rows_match_the_reference(fen: str, variant: esca.Variant) -> None:
+    expected = dict(encode_moves(fen))
+    moves, rows = esca.encode_moves(fen, variant=variant)
+    assert {move.uci for move in moves} == set(expected)
+    for move, row in zip(moves, rows.tolist(), strict=True):
+        assert row == expected[move.uci], f"{fen} {move.uci}"

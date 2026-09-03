@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import Any
 
 from . import board as b
 from .board import (
@@ -995,6 +996,41 @@ def see_capture(position: Position, move: Move) -> int:
     return captured + promoted - swap(position, move.to, other(us), VALUE[landed], occupied)
 
 
+def see_of_unit(position: Position, square: int) -> int:
+    """What the side that does not own the unit on ``square`` wins by taking it."""
+    piece = position.board[square]
+    if piece is None:
+        return 0
+    return swap(position, square, other(piece[0]), VALUE[piece[1]], occupancy(position))
+
+
+def hanging_of(scan: Scan, side: int) -> set[int]:
+    """The units of ``side`` an enemy attacks and no friendly unit defends."""
+    return ((scan.units[side] - scan.role_units[side]["k"]) & scan.by[1 - side]) - scan.by[side]
+
+
+def heavy_units(scan: Scan, side: int) -> set[int]:
+    """The units of ``side`` worth 3 or more."""
+    return {square for role in MINOR_ROLES for square in scan.role_units[side][role]}
+
+
+def ring_attackers(scan: Scan, side: int) -> int:
+    """How many enemy N, B, R and Q attack the king ring of ``side``."""
+    ring = set(b.step_attacks(scan.kings[side], b.KING_STEPS))
+    return sum(
+        1 for role in MINOR_ROLES for square in scan.role_units[1 - side][role] if scan.attacks_from[square] & ring
+    )
+
+
+def square_name(square: int) -> str:
+    return "abcdefgh"[file_of(square)] + str(rank_of(square) + 1)
+
+
+def move_uci(move: Move) -> str:
+    """The move as esca writes it: castling king-to-rook."""
+    return square_name(move.frm) + square_name(move.to) + (move.promotion or "")
+
+
 def see_of_captures(position: Position | None) -> list[int]:
     """The SEE of every capture the side to move has."""
     if position is None:
@@ -1181,6 +1217,7 @@ class Tactics:
         position: Position | None,
         mover: int,
         attack_facts: AttackFacts,
+        pawn_facts: PawnFacts | None = None,
     ) -> None:
         self.available = position is not None
         self.check_count = 0
@@ -1209,7 +1246,7 @@ class Tactics:
         self.skewer_creation = False
         self.discovered_attack = False
         self.legal_moves = 0
-        self.annotated: list[tuple[Move, dict[str, object]]] = []
+        self.annotated: list[tuple[Move, dict[str, Any]]] = []
         if position is None:
             return
 
@@ -1238,24 +1275,26 @@ class Tactics:
             hanging = attack_facts.hanging[1 - mover]
             captures_hanging = move.capture and victim_square(move) in hanging
 
-            self.annotated.append(
-                (
-                    move,
-                    {
-                        "victim": victim,
-                        "mover": mover_role,
-                        "promotion": move.promotion,
-                        "gives_check": gives_check,
-                        "gives_safe_check": gives_check and is_safe,
-                        "is_safe": is_safe,
-                        "captures_hanging": captures_hanging,
-                        "escapes_attack": move.frm in scan.by[1 - mover] and is_safe,
-                        "to_attacked_by_pawn": pawn_attacked,
-                        "is_castling": move.castling,
-                        "is_en_passant": move.en_passant,
-                    },
+            if pawn_facts is not None:
+                self.annotated.append(
+                    (
+                        move,
+                        {
+                            "victim": victim,
+                            "mover": mover_role,
+                            "promotion": move.promotion,
+                            "gives_check": gives_check,
+                            "gives_safe_check": gives_check and is_safe,
+                            "is_safe": is_safe,
+                            "captures_hanging": captures_hanging,
+                            "escapes_attack": move.frm in scan.by[1 - mover] and is_safe,
+                            "to_attacked_by_pawn": pawn_attacked,
+                            "is_castling": move.castling,
+                            "is_en_passant": move.en_passant,
+                            **after_the_move(scan, position, after, move, mover, attack_facts, pawn_facts),
+                        },
+                    )
                 )
-            )
 
             if gives_check:
                 self.check_count += 1
@@ -1340,6 +1379,120 @@ class Tactics:
                             break
                     if self.discovered_attack:
                         break
+
+
+def after_the_move(
+    scan: Scan,
+    position: Position,
+    after: Position,
+    move: Move,
+    mover: int,
+    attack_facts: AttackFacts,
+    pawn_facts: PawnFacts,
+) -> dict[str, Any]:
+    """The facts of ``move`` that only the position after it settles."""
+    mover_colour = scan.colour[mover]
+    enemy_colour = scan.colour[1 - mover]
+    to = landing(move)
+    after_scan = Scan(after)
+    us = 0 if after_scan.us == mover_colour else 1
+    them = 1 - us
+    after_pawns = PawnFacts(after_scan)
+    hanging = [hanging_of(after_scan, us), hanging_of(after_scan, them)]
+    heavy_before = attack_facts.hanging[mover] & heavy_units(scan, mover)
+
+    king = position.king_of(mover_colour)
+    checkers = list(b.attackers_of(position, king, enemy_colour))
+    blocks_check = len(checkers) == 1 and to in set(between(checkers[0], king))
+
+    threats = [see_of_unit(after, square) for square in after_scan.units[them] - after_scan.role_units[them]["k"]]
+
+    stationary = moved_to(move) | {move.frm, move.to}
+    enemy_units = after_scan.units[them]
+    occupied = occupancy(after)
+    discovered = False
+    for role in ("b", "r", "q"):
+        for origin in scan.role_units[mover][role] - stationary:
+            gained = set(attacks_of(role, origin, mover_colour, occupied)) - scan.attacks_from[origin]
+            if any(VALUE[role_at(after, target)] >= 3 for target in gained & enemy_units):
+                discovered = True
+
+    return {
+        "see": see_capture(position, move),
+        "threat_created_max": max(max(threats, default=0), 0),
+        "moves_attacked_unit": move.frm in scan.by[1 - mover],
+        "blocks_check": blocks_check,
+        "advances_passer": role_at(position, move.frm) == "p" and move.frm in pawn_facts.passed[mover],
+        "creates_passer": len(after_pawns.passed[us]) > len(pawn_facts.passed[mover]),
+        "creates_isolated": len(after_pawns.isolated[us]) > len(pawn_facts.isolated[mover]),
+        "creates_doubled": len(after_pawns.doubled[us]) > len(pawn_facts.doubled[mover]),
+        "creates_backward": len(after_pawns.backward[us]) > len(pawn_facts.backward[mover]),
+        "opens_file_at_enemy_king": any(
+            pawn_facts.count_by_file[mover][file] > 0 and after_pawns.count_by_file[us][file] == 0
+            for file in shield_files(file_of(scan.kings[1 - mover]))
+        ),
+        "our_ring_attackers_delta": ring_attackers(after_scan, them) - ring_attackers(scan, 1 - mover),
+        "their_ring_attackers_delta": ring_attackers(after_scan, us) - ring_attackers(scan, mover),
+        "own_hanging_delta": len(hanging[0]) - len(attack_facts.hanging[mover]),
+        "their_hanging_delta": len(hanging[1]) - len(attack_facts.hanging[1 - mover]),
+        "leaves_unit_hanging": bool((hanging[0] & heavy_units(after_scan, us)) - heavy_before),
+        "gives_discovered_attack": discovered,
+    }
+
+
+def move_row(facts: dict[str, Any], w: Writer) -> None:
+    """One legal move's forty values, in the order `features.md` §3 lists."""
+    w.bit(facts["victim"] is not None)
+    w.one_hot(COUNTED_ROLES.index(facts["victim"]) if facts["victim"] else None, 5)
+    w.one_hot(b.ROLES.index(facts["mover"]), 6)
+    w.one_hot("qrbn".index(facts["promotion"]) if facts["promotion"] else None, 4)
+    for name in (
+        "gives_check",
+        "gives_safe_check",
+        "is_safe",
+        "captures_hanging",
+        "escapes_attack",
+        "to_attacked_by_pawn",
+        "is_castling",
+        "is_en_passant",
+    ):
+        w.bit(bool(facts[name]))
+    w.diff(facts["see"], 9.0)
+    w.count(facts["threat_created_max"], 9.0)
+    for name in (
+        "moves_attacked_unit",
+        "blocks_check",
+        "advances_passer",
+        "creates_passer",
+        "creates_isolated",
+        "creates_doubled",
+        "creates_backward",
+        "opens_file_at_enemy_king",
+    ):
+        w.bit(bool(facts[name]))
+    for name in (
+        "our_ring_attackers_delta",
+        "their_ring_attackers_delta",
+        "own_hanging_delta",
+        "their_hanging_delta",
+    ):
+        w.diff(facts[name], 4.0)
+    w.bit(bool(facts["leaves_unit_hanging"]))
+    w.bit(bool(facts["gives_discovered_attack"]))
+
+
+def encode_moves(fen: str) -> list[tuple[str, list[float]]]:
+    """The legal moves of ``fen`` in UCI, each with its forty values."""
+    position = b.parse_fen(fen)
+    scan = Scan(position)
+    tactics = Tactics(scan, position, 0, AttackFacts(scan), PawnFacts(scan))
+    rows = []
+    for move, facts in tactics.annotated:
+        w = Writer()
+        move_row(facts, w)
+        assert len(w.values) == 40, f"a move wrote {len(w.values)} of 40"
+        rows.append((move_uci(move), w.values))
+    return rows
 
 
 def after_victim(position: Position, move: Move) -> str | None:

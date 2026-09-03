@@ -49,6 +49,14 @@
   the units more cheap attackers bear on than defenders, and the slider
   geometry a threat comes from: x-rays through an enemy unit, batteries, and
   batteries whose line meets the enemy king ring.
+- The `move` schema grows from 24 values to 40. Each legal move now also
+  carries its SEE, the largest one it leaves us next, whether it moves an
+  attacked unit or interposes on a check, whether it advances or creates a
+  passer, the isolated, doubled and backward pawns it makes, a king file it
+  opens for us, what it does to both king rings and to both hanging counts,
+  whether it leaves a piece hanging, and whether it uncovers a slider.
+  `esca.MOVE_WIDTH` and `MoveFacts::WIDTH` say 40; the position schema and its
+  `schema_id` are untouched.
 
 ## 0.1.0 (2026-09-03)
 
