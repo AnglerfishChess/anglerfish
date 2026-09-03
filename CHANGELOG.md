@@ -70,6 +70,10 @@
   stand on opposite wings. `KingFacts` carries them, with the `CastledSide`
   enum and `KingFacts::ring_attacker_surplus`; `castled_side` joins the
   features `features.md` §4 keeps to classic chess.
+- `tactics` gains six bits per side: a check that also captures safely, a
+  discovery onto the enemy queen, a back-rank mate threat, a quiet move that
+  leaves more to be won than stands to be won now, a side with no safe move at
+  all, and a promotion the exchange on its square makes profitable.
 
 ## 0.1.0 (2026-09-03)
 

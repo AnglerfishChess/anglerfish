@@ -14,10 +14,10 @@ from pathlib import Path
 
 import esca
 import pytest
-from reference.features import encode, encode_moves
+from reference.features import SCHEMA, encode, encode_moves
 
 DATA = Path(__file__).resolve().parents[1] / "rs_anglerfish" / "esca" / "tests" / "data"
-WIDTH = 1956
+WIDTH = sum(width for _group, width, _features in SCHEMA)
 
 
 def rows_wanted() -> int | None:
@@ -39,8 +39,6 @@ def vectors(name: str) -> list[list[float]]:
 
 
 def feature_names() -> list[str]:
-    from reference.features import SCHEMA
-
     names = []
     for group, _width, features in SCHEMA:
         for feature, _offset, width in features:

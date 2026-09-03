@@ -1327,6 +1327,21 @@ def victim_square(move: Move) -> int:
     return move.to
 
 
+def back_rank_blocked(scan: Scan, side: int) -> bool:
+    """The king of ``side`` on its relative rank 1, every square ahead its own."""
+    king = scan.kings[side]
+    ahead = {scan.relative_square(file, 2, side) for file in [file_of(king), *adjacent_files(file_of(king))]}
+    return scan.relative_rank(king, side) == 1 and ahead <= scan.units[side]
+
+
+def max_threat(position: Position, colour: str) -> int:
+    """The largest SEE of a unit over the units of ``colour``."""
+    return max(
+        (see_of_unit(position, square) for square in position.squares_of(colour) if role_at(position, square) != "k"),
+        default=0,
+    )
+
+
 class Tactics:
     """One side's one-ply options, over the legal moves of ``position``."""
 
@@ -1365,6 +1380,12 @@ class Tactics:
         self.skewer_creation = False
         self.discovered_attack = False
         self.legal_moves = 0
+        self.safe_check_capturing = False
+        self.discovered_attack_on_queen = False
+        self.back_rank_mate_threat = False
+        self.quiet_threat_available = False
+        self.no_safe_moves = False
+        self.promotion_see_positive = False
         self.annotated: list[tuple[Move, dict[str, Any]]] = []
         if position is None:
             return
@@ -1373,6 +1394,10 @@ class Tactics:
         enemy_colour = scan.colour[1 - mover]
         moves = b.legal_moves(position)
         self.legal_moves = len(moves)
+        self.no_safe_moves = True
+        back_rank_open = back_rank_blocked(scan, 1 - mover)
+        their_king_rank = rank_of(scan.kings[1 - mover])
+        threat_now = max_threat(position, enemy_colour)
 
         for move in moves:
             after = b.play(position, move)
@@ -1393,6 +1418,8 @@ class Tactics:
             victim = after_victim(position, move) if move.capture else None
             hanging = attack_facts.hanging[1 - mover]
             captures_hanging = move.capture and victim_square(move) in hanging
+            if is_safe:
+                self.no_safe_moves = False
 
             if pawn_facts is not None:
                 self.annotated.append(
@@ -1423,11 +1450,17 @@ class Tactics:
                     self.safe_check_count += 1
                     if mover_role != "k":
                         self.safe_check_by_role[COUNTED_ROLES.index(mover_role)] = True
+                    if victim is not None:
+                        self.safe_check_capturing = True
                 givers = b.attackers_of(after, after.king_of(enemy_colour), mover_colour)
                 if len(givers) >= 2:
                     self.double_check = True
                 if set(givers) - moved_to(move):
                     self.discovered_check = True
+                if back_rank_open and any(
+                    rank_of(giver) == their_king_rank and role_at(after, giver) in ("r", "q") for giver in givers
+                ):
+                    self.back_rank_mate_threat = True
 
             if not b.legal_moves(after):
                 if gives_check:
@@ -1440,6 +1473,8 @@ class Tactics:
                 self.promotion_roles["qrbn".index(move.promotion)] = True
                 if is_safe:
                     self.safe_promotion_files.add(file_of(move.to))
+                if see_capture(position, move) > 0:
+                    self.promotion_see_positive = True
 
             if victim is not None:
                 self.capture_count += 1
@@ -1453,6 +1488,9 @@ class Tactics:
                     self.equal_captures += 1
                 elif see < 0:
                     self.losing_captures += 1
+
+            if victim is None and not self.quiet_threat_available and max_threat(after, enemy_colour) > threat_now:
+                self.quiet_threat_available = True
 
             enemy_units = set(after.squares_of(enemy_colour))
             reach = set(attacks_of(landed_role, to, mover_colour, occupied))
@@ -1488,16 +1526,15 @@ class Tactics:
                 if pins:
                     self.pin_creations += 1
 
-            if not self.discovered_attack:
-                stationary = moved_to(move) | {move.frm, move.to}
-                for role in ("b", "r", "q"):
-                    for origin in scan.role_units[mover][role] - stationary:
-                        gained = set(attacks_of(role, origin, mover_colour, occupied)) - scan.attacks_from[origin]
-                        if any(VALUE[role_at(after, target)] >= 3 for target in gained & enemy_units):
+            stationary = moved_to(move) | {move.frm, move.to}
+            for role in ("b", "r", "q"):
+                for origin in scan.role_units[mover][role] - stationary:
+                    gained = set(attacks_of(role, origin, mover_colour, occupied)) - scan.attacks_from[origin]
+                    for target in gained & enemy_units:
+                        if VALUE[role_at(after, target)] >= 3:
                             self.discovered_attack = True
-                            break
-                    if self.discovered_attack:
-                        break
+                        if role_at(after, target) == "q":
+                            self.discovered_attack_on_queen = True
 
 
 def after_the_move(
@@ -1658,6 +1695,12 @@ def tactics_block(t: Tactics, w: Writer) -> None:
     w.count(t.legal_moves, 64.0)
     w.bit(t.available and t.legal_moves <= 2)
     w.bit(t.available)
+    w.bit(t.safe_check_capturing)
+    w.bit(t.discovered_attack_on_queen)
+    w.bit(t.back_rank_mate_threat)
+    w.bit(t.quiet_threat_available)
+    w.bit(t.no_safe_moves)
+    w.bit(t.promotion_see_positive)
 
 
 # --------------------------------------------------------------------------
