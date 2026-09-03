@@ -184,8 +184,16 @@ def history(scan: Scan, w: Writer) -> None:
     position = scan.position
     w.one_hot(halfmove_bucket(position.halfmove_clock), 8)
     w.bit(position.clocks_known)
-    # A position carries no history.
+    # A position carries no history: repetition, the recent plies and the last
+    # move are all unknown.
     w.bit(False)
+    w.bit(False)
+    w.count(0, 8.0)
+    w.count(0, 8.0)
+    w.count(0, 16.0)
+    w.diff(0, 9.0)
+    w.one_hot(None, 5)
+    w.one_hot(None, 6)
     w.bit(False)
     w.bit(False)
 

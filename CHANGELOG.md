@@ -8,7 +8,10 @@
   `esca.SCHEMA`.
 - The clock and repetition facts move out of `state` into the new `history`
   group, so a training source without clocks omits one group name.
-  `Facts::history` carries them; `StateFacts` no longer does.
+  `Facts::history` carries them; `StateFacts` no longer does. The group also
+  says what the recent plies did: captures and checks in the last eight, the
+  plies since either, the material trend over them, and what the last move
+  moved, took and gave. A `Game` supplies them; a bare `Position` does not.
 - `pieces.knights_on_outpost` becomes `pieces.minors_on_outpost`, which counts
   bishops too; `king.king_distance` drops the two distances two kings can
   never stand at; `state.repetition_available_them` is gone.
