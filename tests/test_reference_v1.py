@@ -17,7 +17,7 @@ import pytest
 from reference.features import encode, encode_moves
 
 DATA = Path(__file__).resolve().parents[1] / "rs_anglerfish" / "esca" / "tests" / "data"
-WIDTH = 1947
+WIDTH = 1956
 
 
 def rows_wanted() -> int | None:

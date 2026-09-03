@@ -22,6 +22,12 @@
 - `pieces.knights_on_outpost` becomes `pieces.minors_on_outpost`, which counts
   bishops too; `king.king_distance` drops the two distances two kings can
   never stand at; `state.repetition_available_them` is gone.
+- `pieces` gains what makes a minor good or bad and a rook worth its rank: the
+  own fixed pawns standing on an own bishop's colour, the bishop pair against a
+  knight pair as one signed value, a rook on the seventh with the enemy king
+  shut on the eighth, and the units with nowhere safe to go, by count and by
+  value. A trapped unit is `mobility.immobile_pieces` with safety asked of the
+  squares it does reach.
 - `attacks` gains the value twins `attacked_count`, `attacked_value`,
   `en_prise_value` and `pinned_value`.
 - The new `placement` group: the raw board as twelve 64-square planes in the

@@ -8,6 +8,7 @@ is to be readable and independent, not fast.
 from __future__ import annotations
 
 import struct
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -585,6 +586,44 @@ def trapped_rook(scan: Scan, side: int) -> bool:
     return False
 
 
+def fixed_pawns_of(scan: Scan, facts: PawnFacts, side: int) -> set[int]:
+    """The pawns of ``side`` whose stop square carries a unit of either colour."""
+    return {
+        square
+        for square in facts.pawns[side]
+        if scan.relative_square(file_of(square), scan.relative_rank(square, side) + 1, side) in scan.occupied
+    }
+
+
+def safe_destination(scan: Scan, side: int, role: str, frm: int, to: int) -> bool:
+    """The glossary's safe-destination test, read after the unit moves ``frm`` to ``to``."""
+    squares = list(scan.position.board)
+    squares[to] = squares[frm]
+    squares[frm] = None
+    after = replace(scan.position, board=tuple(squares))
+    us, them = scan.colour[side], scan.colour[1 - side]
+
+    if any(after.board[origin] == (them, "p") for origin in b.pawn_attacks(to, us)):
+        return False
+    enemy = b.attackers_of(after, to, them)
+    if not enemy:
+        return True
+    if any(ORDER[role_at(after, origin)] < ORDER[role] for origin in enemy):
+        return False
+    return bool(b.attackers_of(after, to, us))
+
+
+def trapped_units(scan: Scan, side: int) -> list[str]:
+    """The roles of the units of ``side`` that reach no safe destination."""
+    out = []
+    for role in MINOR_ROLES:
+        for frm in scan.role_units[side][role]:
+            destinations = scan.attacks_from[frm] - scan.units[side]
+            if not any(safe_destination(scan, side, role, frm, to) for to in destinations):
+                out.append(role)
+    return out
+
+
 def pieces(scan: Scan, facts: PawnFacts, w: Writer) -> None:
     light = scan.light()
     dark = scan.dark()
@@ -668,6 +707,26 @@ def pieces(scan: Scan, facts: PawnFacts, w: Writer) -> None:
     for side in (0, 1):
         queen_home = scan.relative_square(3, 1, side)
         w.bit(bool(scan.role_units[side]["q"] - {queen_home}))
+
+    for side in (0, 1):
+        colours = set()
+        if bishops_light[side]:
+            colours |= light
+        if bishops_dark[side]:
+            colours |= dark
+        w.count(len(fixed_pawns_of(scan, facts, side) & colours), 8.0)
+    knight_pair = [len(scan.role_units[side]["n"]) >= 2 for side in (0, 1)]
+    pair = [bishops_light[side] > 0 and bishops_dark[side] > 0 for side in (0, 1)]
+    w.diff(int(pair[0] and knight_pair[1]) - int(pair[1] and knight_pair[0]), 1.0)
+    for side in (0, 1):
+        king = scan.kings[1 - side]
+        on_eighth = scan.relative_rank(king, side) == 8
+        w.bit(on_eighth and any(scan.relative_rank(rook, side) == 7 for rook in scan.role_units[side]["r"]))
+    trapped = [trapped_units(scan, side) for side in (0, 1)]
+    for side in (0, 1):
+        w.count(len(trapped[side]), 4.0)
+    for side in (0, 1):
+        w.count(sum(VALUE[role] for role in trapped[side]), 20.0)
 
 
 # --------------------------------------------------------------------------
