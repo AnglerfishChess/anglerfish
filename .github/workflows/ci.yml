@@ -10,30 +10,9 @@ defaults:
     working-directory: rs_anglerfish
 
 jobs:
-  python:
-    # The differential reference is standard library only, so the project's own
-    # dependencies are not installed.
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync --only-group test --no-install-project
-      # The trainer tests need `esca` and torch, so they run in `esca-python`.
-      # `-n auto` overrides the local `-n 4` of the pytest addopts.
-      - run: uv run --no-sync pytest tests --ignore=tests/trainer --ignore=tests/test_reference_v1.py -n auto
-      - run: uvx ruff check tests
-      - run: uvx ruff format --check tests
-      - run: uvx pyrefly check tests/reference tests/test_reference_v1.py
-
   esca-python:
     # The wheel is built from the crate by maturin, so this job needs cargo.
-    # It is also the only job with the built `esca` and torch, so the trainer
-    # and the whole repository's type check belong here.
+    # Every Python test needs the built `esca`, so they all run here.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,7 +29,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups
-      - run: uv run --no-sync pytest rs_anglerfish/esca/python/tests tests/trainer tests/test_reference_v1.py -n auto
+      # `-n auto` overrides the local `-n 4` of the pytest addopts.
+      - run: uv run --no-sync pytest -n auto
       - run: uvx ruff check .
       - run: uvx ruff format --check .
       - run: uvx pyrefly check
