@@ -15,11 +15,11 @@ lichess_db_eval.jsonl.zst
        ▼
   pyanglerfish.data.EvalBatches
        │   esca.encode_moves(fens) → per FEN the legal moves, their rows
-       │                          stacked (total, 24), and the cuts (n + 1,)
+       │                          stacked (total, 40), and the cuts (n + 1,)
        │   move_index(moves, best_move) → the policy target
        │   win_probability(cp, mate, scale) → the value target
        ▼
-  dict of tensors: features (b, w), moves (b, m, 24), move_mask (b, m),
+  dict of tensors: features (b, w), moves (b, m, 40), move_mask (b, m),
                    best (b,), value (b,)
 ```
 
@@ -98,14 +98,14 @@ fit.
 features (w) ─ Linear·ReLU × trunk ─ Linear·ReLU ─ embedding (e)
                                                     ├─ Linear → value logit
                                                     └─ policy
-moves (m, 24) ────────────────────────────────────────┘
+moves (m, 40) ────────────────────────────────────────┘
 
 policy: relu(W_e·embedding + W_m·move) · w  → one score per move,
         −inf where the move is padding, softmax over the legal moves
 ```
 
 The policy head is one linear layer over the embedding joined with a move's
-24 features, summed rather than concatenated so the join is never
+40 features, summed rather than concatenated so the join is never
 materialised. Widths live in `NetConfig`; the defaults are a 1024–512 trunk,
 a 256-wide embedding and a 128-wide move scorer.
 

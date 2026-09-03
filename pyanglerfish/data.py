@@ -157,9 +157,9 @@ def _shuffled(samples: Iterator[Sample], size: int, rng: random.Random) -> Itera
 def collate(samples: list[Sample]) -> dict[str, torch.Tensor]:
     """One batch of samples as padded tensors.
 
-    Keys are `features` (b, w), `moves` (b, m, 24), `move_mask` (b, m) of
-    bool, `best` (b,) of int64 and `value` (b,). Move rows beyond a position's
-    legal move count are zero and masked out.
+    Keys are `features` (b, w), `moves` (b, m, `esca.MOVE_WIDTH`), `move_mask`
+    (b, m) of bool, `best` (b,) of int64 and `value` (b,). Move rows beyond a
+    position's legal move count are zero and masked out.
     """
     if not samples:
         raise ValueError("a batch holds at least one sample")

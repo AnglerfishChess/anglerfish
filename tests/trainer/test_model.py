@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import esca
 import torch
 from torch.nn import functional as F
 
@@ -20,7 +21,7 @@ def tiny() -> tuple[TwoHeadNet, dict[str, torch.Tensor]]:
     mask[1, 1:] = False
     batch = {
         "features": torch.randn(ROWS, WIDTH),
-        "moves": torch.randn(ROWS, MOVES, 24),
+        "moves": torch.randn(ROWS, MOVES, esca.MOVE_WIDTH),
         "move_mask": mask,
         "best": torch.tensor([2, 0, 4]),
         "value": torch.tensor([0.9, 0.1, 0.5]),

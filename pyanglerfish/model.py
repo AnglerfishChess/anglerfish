@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import esca
 import torch
 from torch import nn
 
@@ -17,7 +18,7 @@ class NetConfig:
     """The net's shape. `input_width` must match the encoded group selection."""
 
     input_width: int
-    move_width: int = 24
+    move_width: int = esca.MOVE_WIDTH
     #: Trunk hidden widths, before the embedding layer.
     trunk: tuple[int, ...] = (1024, 512)
     #: Width of the position embedding both heads read.
