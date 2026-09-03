@@ -50,7 +50,7 @@ COUNTED_ROLES = ("p", "n", "b", "r", "q")
 
 
 def read_schema() -> list[tuple[str, int, list[tuple[str, int, int]]]]:
-    """The canonical text as groups of ``(name, width, [(feature, offset, width)])``."""
+    """The canonical text as sections of ``(name, width, [(feature, offset, width)])``."""
     groups: list[tuple[str, int, list[tuple[str, int, int]]]] = []
     for line in CANONICAL.read_text().splitlines():
         if line.startswith("  "):
@@ -64,7 +64,13 @@ def read_schema() -> list[tuple[str, int, list[tuple[str, int, int]]]]:
     return groups
 
 
-SCHEMA = read_schema()
+SECTIONS = read_schema()
+
+#: The position row's groups; the `move` section is the row of its own below.
+SCHEMA = [section for section in SECTIONS if section[0] != "move"]
+
+#: How many values one move row carries.
+MOVE_WIDTH = next(width for name, width, _features in SECTIONS if name == "move")
 
 
 def f32(value: float) -> float:
@@ -215,6 +221,15 @@ def material_value(scan: Scan, side: int) -> int:
     return sum(VALUE[role] * len(scan.role_units[side][role]) for role in COUNTED_ROLES)
 
 
+def non_pawn_value(scan: Scan, side: int) -> int:
+    return sum(VALUE[role] * len(scan.role_units[side][role]) for role in MINOR_ROLES)
+
+
+def bishop_pair(scan: Scan, side: int) -> bool:
+    bishops = scan.role_units[side]["b"]
+    return bool(bishops & scan.light()) and bool(bishops & scan.dark())
+
+
 def phase_points(scan: Scan) -> int:
     weights = {"q": 4, "r": 2, "b": 1, "n": 1}
     return sum(weight * len(scan.role_units[side][role]) for side in (0, 1) for role, weight in weights.items())
@@ -241,10 +256,7 @@ def material(scan: Scan, w: Writer) -> None:
     for index in range(5):
         w.diff(counts[0][index] - counts[1][index], 4.0)
     for side in (0, 1):
-        w.count(
-            sum(VALUE[role] * len(scan.role_units[side][role]) for role in MINOR_ROLES),
-            62.0,
-        )
+        w.count(non_pawn_value(scan, side), 62.0)
     w.diff(material_value(scan, 0) - material_value(scan, 1), 20.0)
     phase = f32(min(phase_points(scan), 24) / 24.0)
     w.value(phase)
@@ -253,6 +265,8 @@ def material(scan: Scan, w: Writer) -> None:
     w.bit(all(not scan.role_units[side][role] for side in (0, 1) for role in MINOR_ROLES))
     for side in (0, 1):
         w.bit(insufficient(scan, side))
+    w.diff(int(bishop_pair(scan, 0)) - int(bishop_pair(scan, 1)), 1.0)
+    w.diff(non_pawn_value(scan, 0) - non_pawn_value(scan, 1), 20.0)
 
 
 # --------------------------------------------------------------------------
@@ -946,6 +960,8 @@ def mobility(scan: Scan, w: Writer) -> None:
         )
     for side in (0, 1):
         w.count(total[side], 96.0)
+    for index in range(5):
+        w.diff(safe[0][index] - safe[1][index], 16.0)
 
 
 class AttackFacts:
@@ -1597,7 +1613,7 @@ def after_the_move(
 
 
 def move_row(facts: dict[str, Any], w: Writer) -> None:
-    """One legal move's forty values, in the order `features.md` §3 lists."""
+    """One legal move's values, in the order the schema's `move` section names."""
     w.bit(facts["victim"] is not None)
     w.one_hot(COUNTED_ROLES.index(facts["victim"]) if facts["victim"] else None, 5)
     w.one_hot(b.ROLES.index(facts["mover"]), 6)
@@ -1646,7 +1662,7 @@ def encode_moves(fen: str) -> list[tuple[str, list[float]]]:
     for move, facts in tactics.annotated:
         w = Writer()
         move_row(facts, w)
-        assert len(w.values) == 40, f"a move wrote {len(w.values)} of 40"
+        assert len(w.values) == MOVE_WIDTH, f"a move wrote {len(w.values)} of {MOVE_WIDTH}"
         rows.append((move_uci(move), w.values))
     return rows
 
@@ -1801,7 +1817,7 @@ def endgame(scan: Scan, facts: PawnFacts, w: Writer) -> None:
 # planes
 
 
-def planes(scan: Scan, facts: AttackFacts, w: Writer) -> None:
+def planes(scan: Scan, facts: AttackFacts, threat_facts: Threats, w: Writer) -> None:
     for squares in (
         scan.by[0],
         scan.by[1],
@@ -1811,6 +1827,7 @@ def planes(scan: Scan, facts: AttackFacts, w: Writer) -> None:
         facts.hanging[1],
         facts.pinned[0],
         facts.pinned[1],
+        threat_facts.threatened[1],
     ):
         w.plane(squares, scan.us)
 
@@ -1839,11 +1856,12 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
     null = b.null_move(position)
     exchange_block(see_of_captures(position), writers["exchange"])
     exchange_block(see_of_captures(null), writers["exchange"])
-    threats(Threats(scan), writers["threats"])
+    threat_facts = Threats(scan)
+    threats(threat_facts, writers["threats"])
     tactics_block(Tactics(scan, position, 0, attack_facts), writers["tactics"])
     tactics_block(Tactics(scan, null, 1, attack_facts), writers["tactics"])
     endgame(scan, pawn_facts, writers["endgame"])
-    planes(scan, attack_facts, writers["planes"])
+    planes(scan, attack_facts, threat_facts, writers["planes"])
 
     values: list[float] = []
     for name, width, features in SCHEMA:

@@ -61,8 +61,7 @@
   passer, the isolated, doubled and backward pawns it makes, a king file it
   opens for us, what it does to both king rings and to both hanging counts,
   whether it leaves a piece hanging, and whether it uncovers a slider.
-  `esca.MOVE_WIDTH` and `MoveFacts::WIDTH` say 40; the position schema and its
-  `schema_id` are untouched.
+  `esca.MOVE_WIDTH` and `MoveFacts::WIDTH` say 40.
 - `king` gains the defensive half of the siege and the exposure a player reads
   off the board: the pieces defending their own king's ring and their weight,
   the besieging weight less that, the open rays off the king, whether it has
@@ -74,6 +73,15 @@
   discovery onto the enemy queen, a back-rank mate threat, a quiet move that
   leaves more to be won than stands to be won now, a side with no safe move at
   all, and a promotion the exchange on its square makes profitable.
+- The move row is a section of the schema of its own, named `move`, with a
+  version, named features, widths and encodings, and its text folded into the
+  one `schema_id`. A checkpoint that stores the id now refuses a move row of
+  another shape as surely as a position row of one. `Schema::moves`,
+  `GroupSpec::canonical` and `GroupSpec::feature`; `esca.MOVE_SCHEMA` and
+  `Schema.moves()` in Python.
+- `material` gains the bishop-pair imbalance and the piece-value difference,
+  `mobility` the safe-mobility difference per type, and `planes` a ninth
+  plane: where their threatened units stand.
 
 ## 0.1.0 (2026-09-03)
 
