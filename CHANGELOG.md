@@ -20,6 +20,16 @@
 - The new `placement` group: the raw board as twelve 64-square planes in the
   mover's view, so a run measuring the augmentation against the board alone
   selects a group instead of building its own input. `Facts::placement`.
+- The `endgame` group fills in: how central each king stands, the plies each
+  side's leading passer still needs and the difference between them, the
+  opposition the kings stand in, a king on a key square of its own passer, a
+  wrong-colour bishop, and the three drawn material configurations
+  `material.insufficient_material` deliberately excludes. `Facts::endgame`,
+  with the `Opposition` and `DrawishMaterial` enums. The opposition is no
+  longer on the excluded list of `features.md` §4.
+- `history.last_move_was_check` is gone: with a history it is `state.in_check`
+  read from the other end, and a check cannot survive the move that answers
+  it.
 - Static exchange evaluation: `Position::see` and `Position::see_capture`, the
   new `exchange` group over them, and `tactics.winning_capture_available`,
   `winning_capture_max_gain`, `equal_capture_count` and `losing_capture_count`

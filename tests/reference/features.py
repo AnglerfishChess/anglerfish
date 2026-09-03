@@ -195,7 +195,6 @@ def history(scan: Scan, w: Writer) -> None:
     w.one_hot(None, 5)
     w.one_hot(None, 6)
     w.bit(False)
-    w.bit(False)
 
 
 def halfmove_bucket(clock: int) -> int:
@@ -1100,6 +1099,100 @@ def tactics_block(t: Tactics, w: Writer) -> None:
 
 
 # --------------------------------------------------------------------------
+# endgame
+
+#: d4, e4, d5 and e5.
+CENTRE_SQUARES = (27, 28, 35, 36)
+
+#: The race plies of a side with no passer.
+NO_RACE = 8
+
+
+def centralisation(square: int) -> int:
+    """The Chebyshev distance from ``square`` to the nearest central square."""
+    return min(chebyshev(square, centre) for centre in CENTRE_SQUARES)
+
+
+def race_plies(lead_rank: int | None, side: int) -> int:
+    """The plies the most advanced passer needs, or ``NO_RACE`` without one."""
+    if lead_rank is None:
+        return NO_RACE
+    return max(8 - lead_rank - (1 if side == 0 else 0), 0)
+
+
+def opposition(scan: Scan) -> int | None:
+    """0 for a direct opposition, 1 for a distant one, ``None`` for neither."""
+    corridor = between(scan.kings[0], scan.kings[1])
+    if set(corridor) & scan.occupied:
+        return None
+    if len(corridor) == 1:
+        return 0
+    return 1 if len(corridor) in (3, 5) else None
+
+
+def key_squares(scan: Scan, pawn: int, side: int) -> set[int]:
+    """The key squares of one pawn; a rook pawn has none."""
+    file = file_of(pawn)
+    if file in (0, 7):
+        return set()
+    rank = scan.relative_rank(pawn, side)
+    ahead = rank + 2 if rank <= 4 else rank + 1
+    return {scan.relative_square(neighbour, ahead, side) for neighbour in (file - 1, file, file + 1)}
+
+
+def wrong_colour_bishop(scan: Scan, side: int) -> bool:
+    bishops = scan.role_units[side]["b"]
+    pawns = scan.role_units[side]["p"]
+    if not bishops or not pawns or any(file_of(pawn) not in (0, 7) for pawn in pawns):
+        return False
+    dark = all(b.is_dark(square) for square in bishops)
+    if not dark and any(b.is_dark(square) for square in bishops):
+        return False
+    return all(b.is_dark(scan.relative_square(file_of(pawn), 8, side)) != dark for pawn in pawns)
+
+
+def bare_king(scan: Scan, side: int) -> bool:
+    return not any(scan.role_units[side][role] for role in COUNTED_ROLES)
+
+
+def drawish_material(scan: Scan) -> int | None:
+    """0 for two knights, 1 for a wrong bishop, 2 for opposite bishops."""
+    for side in (0, 1):
+        if not bare_king(scan, 1 - side):
+            continue
+        units = scan.role_units[side]
+        if len(units["n"]) == 2 and not (units["p"] | units["b"] | units["r"] | units["q"]):
+            return 0
+        if wrong_colour_bishop(scan, side) and not (units["n"] | units["r"] | units["q"]):
+            return 1
+    bishops = [scan.role_units[side]["b"] for side in (0, 1)]
+    opposite = (
+        len(bishops[0]) == 1
+        and len(bishops[1]) == 1
+        and b.is_dark(next(iter(bishops[0]))) != b.is_dark(next(iter(bishops[1])))
+    )
+    if opposite and not any(scan.role_units[side][role] for side in (0, 1) for role in ("n", "r", "q")):
+        return 2
+    return None
+
+
+def endgame(scan: Scan, facts: PawnFacts, w: Writer) -> None:
+    for side in (0, 1):
+        w.count(centralisation(scan.kings[side]), 3.0)
+    plies = [race_plies(facts.lead_rank[side], side) for side in (0, 1)]
+    for side in (0, 1):
+        w.count(plies[side], 8.0)
+    w.diff(plies[0] - plies[1], 8.0)
+    stand = opposition(scan)
+    w.one_hot(2 if stand is None else stand, 3)
+    for side in (0, 1):
+        w.bit(any(scan.kings[side] in key_squares(scan, pawn, side) for pawn in facts.passed[side]))
+    for side in (0, 1):
+        w.bit(wrong_colour_bishop(scan, side))
+    w.one_hot(drawish_material(scan), 3)
+
+
+# --------------------------------------------------------------------------
 # planes
 
 
@@ -1143,6 +1236,7 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
     exchange_block(see_of_captures(null), writers["exchange"])
     tactics_block(Tactics(scan, position, 0, attack_facts), writers["tactics"])
     tactics_block(Tactics(scan, null, 1, attack_facts), writers["tactics"])
+    endgame(scan, pawn_facts, writers["endgame"])
     planes(scan, attack_facts, writers["planes"])
 
     values: list[float] = []
