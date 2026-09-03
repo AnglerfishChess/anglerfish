@@ -14,6 +14,9 @@
   never stand at; `state.repetition_available_them` is gone.
 - `attacks` gains the value twins `attacked_count`, `attacked_value`,
   `en_prise_value` and `pinned_value`.
+- The new `placement` group: the raw board as twelve 64-square planes in the
+  mover's view, so a run measuring the augmentation against the board alone
+  selects a group instead of building its own input. `Facts::placement`.
 
 ## 0.1.0 (2026-09-03)
 

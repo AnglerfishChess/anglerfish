@@ -153,6 +153,16 @@ def adjacent_files(file: int) -> list[int]:
 
 
 # --------------------------------------------------------------------------
+# placement
+
+
+def placement(scan: Scan, w: Writer) -> None:
+    for side in (0, 1):
+        for role in b.ROLES:
+            w.plane(scan.role_units[side][role], scan.us)
+
+
+# --------------------------------------------------------------------------
 # state
 
 
@@ -1045,6 +1055,7 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
 
     writers: dict[str, Writer] = {name: Writer() for name, _width, _features in SCHEMA}
 
+    placement(scan, writers["placement"])
     state(scan, writers["state"])
     history(scan, writers["history"])
     material(scan, writers["material"])
