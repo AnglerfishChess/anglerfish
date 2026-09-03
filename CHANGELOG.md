@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-09-03)
 
-Nothing released yet. What is in the tree:
+First release. `esca` is published to crates.io and PyPI; the engine and the
+trainer ship in the repository only.
 
 - `esca`: `Position`, `Game` and the `Variant` trait, with `Classic` and
   `Chess960` behind it; FEN and EPD, X-FEN and Shredder-FEN castling, legal
