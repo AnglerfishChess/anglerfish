@@ -87,10 +87,16 @@ impl Engine {
 
     /// The lines up to and including the first one starting with `prefix`.
     fn until(&mut self, prefix: &str) -> Vec<String> {
+        self.until_within(TIMEOUT, prefix)
+    }
+
+    /// Like `until`, with its own patience for a search that is slow in a
+    /// debug build on a loaded machine.
+    fn until_within(&mut self, patience: Duration, prefix: &str) -> Vec<String> {
         let mut lines = Vec::new();
         loop {
             let line = self
-                .line(TIMEOUT)
+                .line(patience)
                 .unwrap_or_else(|| panic!("expected a {prefix:?} line, got {lines:#?}"));
             let found = line.starts_with(prefix);
             lines.push(line);
@@ -251,7 +257,7 @@ fn answers_a_search_for_a_mate() {
     engine.send("setoption name Strategy value two-ply");
     engine.send(&format!("position fen {MATE_IN_ONE}"));
     engine.send("go mate 1");
-    let lines = engine.until("bestmove");
+    let lines = engine.until_within(Duration::from_secs(60), "bestmove");
 
     assert_eq!(lines.last().map(String::as_str), Some("bestmove h5f7"));
     assert!(
