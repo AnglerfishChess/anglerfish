@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- PGN, behind the `pgn` feature and always in the wheel: `pgn::Reader` over a
+  file or a string, tolerant of the archives in the wild and, with
+  `skipping()`, of one bad game among many; `pgn::Game` with headers,
+  mainline, variations, comments and NAGs, `mainline_game()` to play it and
+  `Game::to_pgn()` to write one, X-FEN setups included. Python mirrors it as
+  `esca.pgn`.
+- A UCI client, behind the `uci` feature and always in the wheel:
+  `uci::protocol` is the protocol as values and does no I/O; `uci::Engine`
+  runs the process with every wait bounded, so a silent or dead engine is an
+  error, not a hang. `set_position` sets `UCI_Chess960` and the castling
+  spelling from the game's variant, and refuses a Chess960 game to an engine
+  that does not offer the option. Python has `esca.uci.Engine` (GIL released
+  around every wait) and `AsyncEngine`, the same surface as coroutines, with
+  no async runtime under it.
 - The v1 schema, `schema_semver` 1.0.0: fourteen groups in the order
   `features.md` §2 gives them. `Schema::v1` replaces `Schema::v0`, which is
   gone, as is every net trained on it; Python names it `esca.SCHEMA_V1` and
