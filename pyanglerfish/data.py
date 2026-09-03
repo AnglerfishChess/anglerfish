@@ -42,8 +42,8 @@ SCALE_ROWS = 400_000
 def resolve_groups(groups: tuple[str, ...] | None) -> tuple[str, ...]:
     """The named schema groups, or every group of the v0 schema."""
     if groups is None:
-        return tuple(esca.SCHEMA_V0.group_names)
-    unknown = [name for name in groups if name not in esca.SCHEMA_V0.group_names]
+        return tuple(esca.SCHEMA.group_names)
+    unknown = [name for name in groups if name not in esca.SCHEMA.group_names]
     if unknown:
         raise ValueError(f"not schema groups: {', '.join(unknown)}")
     return tuple(groups)
@@ -77,7 +77,7 @@ class DataConfig:
     @property
     def width(self) -> int:
         """Values per position row under this group selection."""
-        return esca.SCHEMA_V0.width_of(list(self.group_list))
+        return esca.SCHEMA.width_of(list(self.group_list))
 
 
 @dataclass(frozen=True, slots=True)

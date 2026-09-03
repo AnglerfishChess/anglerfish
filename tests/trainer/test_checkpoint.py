@@ -26,7 +26,7 @@ def test_round_trip_keeps_the_manifest_and_the_weights(tmp_path: Path) -> None:
 
     loaded, manifest = load_checkpoint(path)
     assert manifest["schema_id"] == esca.SCHEMA_ID
-    assert manifest["schema_semver"] == esca.SCHEMA_V0.semver
+    assert manifest["schema_semver"] == esca.SCHEMA.semver
     assert manifest["groups"] == list(GROUPS)
     assert manifest["value_scale"] == pytest.approx(173.5)
     assert manifest["step"] == 42

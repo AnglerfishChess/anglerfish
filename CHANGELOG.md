@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- The v1 schema, `schema_semver` 1.0.0: fourteen groups in the order
+  `features.md` §2 gives them. `Schema::v1` replaces `Schema::v0`, which is
+  gone, as is every net trained on it; Python names it `esca.SCHEMA_V1` and
+  `esca.SCHEMA`.
+- The clock and repetition facts move out of `state` into the new `history`
+  group, so a training source without clocks omits one group name.
+  `Facts::history` carries them; `StateFacts` no longer does.
+- `pieces.knights_on_outpost` becomes `pieces.minors_on_outpost`, which counts
+  bishops too; `king.king_distance` drops the two distances two kings can
+  never stand at; `state.repetition_available_them` is gone.
+- `attacks` gains the value twins `attacked_count`, `attacked_value`,
+  `en_prise_value` and `pinned_value`.
+
 ## 0.1.0 (2026-09-03)
 
 First release. `esca` is published to crates.io and PyPI; the engine and the

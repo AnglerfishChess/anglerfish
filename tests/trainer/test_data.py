@@ -69,7 +69,7 @@ def test_the_split_is_stable_across_passes(sample_dump: Path) -> None:
 
 def test_a_group_selection_narrows_the_row(sample_dump: Path) -> None:
     settings = config(sample_dump, groups=("state", "material"))
-    assert settings.width == 29 + 26
+    assert settings.width == 16 + 26
     batch = next(iter(EvalBatches(settings, scale=SCALE, shuffle=False)))
     assert batch["features"].shape[1] == settings.width
 

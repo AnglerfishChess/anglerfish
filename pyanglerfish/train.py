@@ -145,7 +145,7 @@ def save_checkpoint(
     torch.save(
         {
             "schema_id": esca.SCHEMA_ID,
-            "schema_semver": esca.SCHEMA_V0.semver,
+            "schema_semver": esca.SCHEMA.semver,
             "groups": list(groups),
             "value_scale": scale,
             "net": net.config.as_dict(),

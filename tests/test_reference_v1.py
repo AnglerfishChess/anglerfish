@@ -16,7 +16,7 @@ import pytest
 from reference.features import encode
 
 DATA = Path(__file__).resolve().parents[1] / "rs_anglerfish" / "esca" / "tests" / "data"
-WIDTH = 1065
+WIDTH = 1070
 
 
 def rows_wanted() -> int | None:
@@ -86,5 +86,5 @@ def test_chess960_rows_match_the_reference(fen: str, expected: list[float], vari
     check(fen, expected, variant)
 
 
-def test_the_schema_the_reference_reads_is_1065_wide() -> None:
+def test_the_schema_the_reference_reads_is_as_wide_as_the_fixture() -> None:
     assert len(NAMES) == WIDTH

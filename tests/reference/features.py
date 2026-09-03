@@ -1,4 +1,4 @@
-"""The v0 feature vector, written out from `docs/features.md`.
+"""The v1 feature vector, written out from `docs/features.md`.
 
 One function per group, in schema order, each appending to a list of values.
 Everything is a plain loop over squares and over the legal move list; the point
@@ -32,7 +32,7 @@ from .board import (
     view,
 )
 
-CANONICAL = Path(__file__).resolve().parents[2] / "rs_anglerfish" / "esca" / "tests" / "data" / "schema_v0.txt"
+CANONICAL = Path(__file__).resolve().parents[2] / "rs_anglerfish" / "esca" / "tests" / "data" / "schema_v1.txt"
 
 #: The features whose definitions assume the classic starting squares.
 CLASSIC_ONLY = {
@@ -168,10 +168,13 @@ def state(scan: Scan, w: Writer) -> None:
     w.bit(ep is not None)
     w.one_hot(None if ep is None else file_of(ep), 8)
     w.bit(any(move.en_passant for move in b.legal_moves(position)))
+
+
+def history(scan: Scan, w: Writer) -> None:
+    position = scan.position
     w.one_hot(halfmove_bucket(position.halfmove_clock), 8)
     w.bit(position.clocks_known)
     # A position carries no history.
-    w.bit(False)
     w.bit(False)
     w.bit(False)
     w.bit(False)
@@ -489,7 +492,8 @@ def pieces(scan: Scan, facts: PawnFacts, w: Writer) -> None:
 
     squares = [outposts(scan, facts, side) for side in (0, 1)]
     for side in (0, 1):
-        w.count(len(scan.role_units[side]["n"] & squares[side]), 2.0)
+        minors = scan.role_units[side]["n"] | scan.role_units[side]["b"]
+        w.count(len(minors & squares[side]), 2.0)
     for side in (0, 1):
         w.count(len(squares[side] - scan.occupied), 4.0)
     for side in (0, 1):
@@ -608,7 +612,8 @@ def king(scan: Scan, w: Writer) -> None:
             for file in [file_of(kings[side]), *adjacent_files(file_of(kings[side]))]
         }
         w.bit(rank == 1 and ahead <= scan.units[side])
-    w.one_hot(chebyshev(kings[0], kings[1]) - 1, 8)
+    distance = chebyshev(kings[0], kings[1])
+    w.one_hot(distance - 2 if 2 <= distance <= 7 else None, 6)
     for side in (0, 1):
         enemies = [square for role in MINOR_ROLES for square in scan.role_units[1 - side][role]]
         mean = sum(chebyshev(square, kings[side]) for square in enemies) / len(enemies) if enemies else 0.0
@@ -674,12 +679,16 @@ class AttackFacts:
 
     def __init__(self, scan: Scan) -> None:
         self.scan = scan
+        self.attacked: list[set[int]] = [set(), set()]
         self.hanging: list[set[int]] = [set(), set()]
         self.en_prise: list[set[int]] = [set(), set()]
         self.pinned: list[set[int]] = [set(), set()]
         self.defended: list[set[int]] = [set(), set()]
+        self.attacked_value = [0, 0]
         self.hanging_value = [0, 0]
+        self.en_prise_value = [0, 0]
         self.en_prise_max = [0, 0]
+        self.pinned_value = [0, 0]
         self.skewers = [0, 0]
 
         position = scan.position
@@ -690,6 +699,8 @@ class AttackFacts:
                 attackers = b.attackers_of(position, square, scan.colour[1 - side])
                 if not attackers:
                     continue
+                self.attacked[side].add(square)
+                self.attacked_value[side] += VALUE[role]
                 defended = square in scan.by[side]
                 cheaper = any(ORDER[role_at(position, origin)] < ORDER[role] for origin in attackers)
                 if not defended:
@@ -697,8 +708,10 @@ class AttackFacts:
                     self.hanging_value[side] += VALUE[role]
                 if not defended or cheaper:
                     self.en_prise[side].add(square)
+                    self.en_prise_value[side] += VALUE[role]
                     self.en_prise_max[side] = max(self.en_prise_max[side], VALUE[role])
             self.pinned[side] = self.absolute_pins(side)
+            self.pinned_value[side] = sum(VALUE[role_at(position, square)] for square in self.pinned[side])
             self.skewers[side] = self.count_skewers(side)
 
     def absolute_pins(self, side: int) -> set[int]:
@@ -735,15 +748,23 @@ def attacks(scan: Scan, facts: AttackFacts, w: Writer) -> None:
     w.count(len(scan.by[1]), 48.0)
     w.diff(len(scan.by[0]) - len(scan.by[1]), 48.0)
     for side in (0, 1):
+        w.count(len(facts.attacked[side]), 8.0)
+    for side in (0, 1):
+        w.count(facts.attacked_value[side], 20.0)
+    for side in (0, 1):
         w.count(len(facts.hanging[side]), 4.0)
     for side in (0, 1):
         w.count(facts.hanging_value[side], 20.0)
     for side in (0, 1):
         w.count(len(facts.en_prise[side]), 4.0)
     for side in (0, 1):
+        w.count(facts.en_prise_value[side], 20.0)
+    for side in (0, 1):
         w.count(facts.en_prise_max[side], 9.0)
     for side in (0, 1):
         w.count(len(facts.pinned[side]), 4.0)
+    for side in (0, 1):
+        w.count(facts.pinned_value[side], 20.0)
     for side in (0, 1):
         w.count(facts.skewers[side], 4.0)
     for side in (0, 1):
@@ -1016,27 +1037,16 @@ def planes(scan: Scan, facts: AttackFacts, w: Writer) -> None:
 
 
 def encode(fen: str, variant: str = "chess") -> list[float]:
-    """The 1065 v0 values of ``fen`` under ``variant``."""
+    """The v1 values of ``fen`` under ``variant``."""
     position = b.parse_fen(fen)
     scan = Scan(position)
     pawn_facts = PawnFacts(scan)
     attack_facts = AttackFacts(scan)
 
-    writers: dict[str, Writer] = {}
-    for name in (
-        "state",
-        "material",
-        "pawns",
-        "pieces",
-        "king",
-        "mobility",
-        "attacks",
-        "tactics",
-        "planes",
-    ):
-        writers[name] = Writer()
+    writers: dict[str, Writer] = {name: Writer() for name, _width, _features in SCHEMA}
 
     state(scan, writers["state"])
+    history(scan, writers["history"])
     material(scan, writers["material"])
     pawns(scan, pawn_facts, writers["pawns"])
     pieces(scan, pawn_facts, writers["pieces"])
@@ -1055,5 +1065,4 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
             if variant != "chess" and (name, feature) in CLASSIC_ONLY:
                 group[offset : offset + feature_width] = [0.0] * feature_width
         values.extend(group)
-    assert len(values) == 1065, f"the vector is {len(values)} values"
     return values

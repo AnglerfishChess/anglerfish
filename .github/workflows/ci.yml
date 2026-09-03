@@ -28,7 +28,7 @@ jobs:
       - run: uv run --no-sync pytest tests --ignore=tests/trainer -n auto
       - run: uvx ruff check tests
       - run: uvx ruff format --check tests
-      - run: uvx pyrefly check tests/reference tests/test_reference_v0.py
+      - run: uvx pyrefly check tests/reference tests/test_reference_v1.py
 
   esca-python:
     # The wheel is built from the crate by maturin, so this job needs cargo.
