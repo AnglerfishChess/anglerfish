@@ -945,24 +945,39 @@ def least_valuable_attacker(
     return best
 
 
-def swap(position: Position, square: int, colour: str, occupant: int, occupied: frozenset[int]) -> int:
-    """What ``colour`` wins by capturing the unit worth ``occupant`` on ``square``."""
+def forced_swap(position: Position, square: int, colour: str, occupant: int, occupied: frozenset[int]) -> int | None:
+    """What ``colour`` wins by taking the unit worth ``occupant`` on ``square``, that first
+    capture played whatever it costs; ``None`` when it has no capture there."""
     found = least_valuable_attacker(position, square, colour, occupied)
     if found is None:
-        return 0
+        return None
     origin, role = found
     left = occupied - {origin}
     # A king captures only what the other side has stopped defending.
     if role == "k" and least_valuable_attacker(position, square, other(colour), left) is not None:
-        return 0
+        return None
     promotes = role == "p" and relative_rank(square, colour) == 8
     landed = "q" if promotes else role
-    gain = (
+    return (
         occupant
         + (VALUE["q"] - VALUE["p"] if promotes else 0)
         - swap(position, square, other(colour), VALUE[landed], left)
     )
-    return max(gain, 0)
+
+
+def swap(position: Position, square: int, colour: str, occupant: int, occupied: frozenset[int]) -> int:
+    """The same, with ``colour`` free to leave the square alone."""
+    gain = forced_swap(position, square, colour, occupant, occupied)
+    return 0 if gain is None else max(gain, 0)
+
+
+def signed_see(position: Position, square: int) -> int | None:
+    """The signed SEE of the unit on ``square``: what the other side wins by taking it,
+    the first capture played whatever it costs."""
+    piece = position.board[square]
+    if piece is None or piece[1] == "k":
+        return None
+    return forced_swap(position, square, other(piece[0]), VALUE[piece[1]], occupancy(position))
 
 
 def see_capture(position: Position, move: Move) -> int:
@@ -992,6 +1007,144 @@ def exchange_block(sees: list[int], w: Writer) -> None:
     w.count(sum(1 for see in sees if see > 0), 8.0)
     w.count(sum(1 for see in sees if see == 0), 8.0)
     w.count(sum(see for see in sees if see > 0), 20.0)
+
+
+# --------------------------------------------------------------------------
+# threats
+
+
+def cheap_enough(position: Position, squares: set[int], limit: int) -> int:
+    """How many of ``squares`` hold a unit whose value order is at most ``limit``."""
+    return sum(1 for origin in squares if ORDER[role_at(position, origin)] <= limit)
+
+
+def moves_along(role: str, straight: bool) -> bool:
+    """Whether ``role`` moves along a rank or file, or along a diagonal."""
+    return role == "q" or role == ("r" if straight else "b")
+
+
+def xrays_through_enemy(scan: Scan, side: int) -> int:
+    """(slider, target) pairs of ``side`` that look through one enemy unit at another."""
+    count = 0
+    for role in ("b", "r", "q"):
+        for slider in scan.role_units[side][role]:
+            reach = scan.attacks_from[slider]
+            for front in reach & scan.units[1 - side]:
+                xray = set(attacks_of(role, slider, scan.colour[side], scan.occupied - {front}))
+                behind = (xray - reach) & set(line_through(slider, front)) & scan.units[1 - side]
+                if behind:
+                    count += 1
+    return count
+
+
+def batteries(scan: Scan, side: int) -> tuple[int, bool]:
+    """``side``'s batteries, and whether one line holds a square of the enemy king ring."""
+    position = scan.position
+    sliders = {square for square in scan.units[side] if role_at(position, square) in ("b", "r", "q")}
+    ring = set(b.step_attacks(scan.kings[1 - side], b.KING_STEPS))
+    count = 0
+    at_king = False
+    for first in sorted(sliders):
+        for second in sorted(sliders):
+            if second <= first:
+                continue
+            ray = set(line_through(first, second))
+            if not ray:
+                continue
+            straight = second in attacks_of("r", first, scan.colour[side], frozenset())
+            pair = {first, second} | (set(between(first, second)) & scan.occupied)
+            if any(square not in sliders or not moves_along(role_at(position, square), straight) for square in pair):
+                continue
+            count += 1
+            at_king = at_king or bool(ray & ring)
+    return count, at_king
+
+
+class Threats:
+    """Threatened units, defenders that do not hold, x-rays and batteries."""
+
+    def __init__(self, scan: Scan) -> None:
+        position = scan.position
+        self.threatened: list[set[int]] = [set(), set()]
+        self.threatened_value = [0, 0]
+        self.max_gain = [0, 0]
+        self.attacked_by_lesser: list[set[int]] = [set(), set()]
+        self.queen_attacked_by_lesser = [False, False]
+        self.overloaded: list[set[int]] = [set(), set()]
+        self.removable: list[set[int]] = [set(), set()]
+        self.loose: list[set[int]] = [set(), set()]
+        self.surplus: list[set[int]] = [set(), set()]
+        self.xrays = [0, 0]
+        self.batteries = [0, 0]
+        self.battery_at_king = [False, False]
+
+        for side in (0, 1):
+            # A king is never captured, so it is in none of these sets.
+            units = scan.units[side] - scan.role_units[side]["k"]
+            sole: set[int] = set()
+            for square in units:
+                role = role_at(position, square)
+                attackers = set(b.attackers_of(position, square, scan.colour[1 - side]))
+                defenders = set(b.attackers_of(position, square, scan.colour[side]))
+
+                signed = signed_see(position, square)
+                see = 0 if signed is None else max(signed, 0)
+                if see > 0:
+                    self.threatened[side].add(square)
+                    self.threatened_value[side] += VALUE[role]
+                self.max_gain[side] = max(self.max_gain[side], see)
+
+                if any(ORDER[role_at(position, origin)] < ORDER[role] for origin in attackers):
+                    self.attacked_by_lesser[side].add(square)
+                    self.queen_attacked_by_lesser[side] |= role == "q"
+
+                if not defenders:
+                    self.loose[side].add(square)
+
+                limit = ORDER[role]
+                if cheap_enough(position, attackers, limit) > cheap_enough(position, defenders, limit):
+                    self.surplus[side].add(square)
+
+                if attackers and len(defenders) == 1:
+                    defender = next(iter(defenders))
+                    if defender in sole:
+                        self.overloaded[side].add(defender)
+                    sole.add(defender)
+
+            for defender in sole:
+                gain = signed_see(position, defender)
+                if gain is not None and gain >= 0:
+                    self.removable[side].add(defender)
+
+            self.xrays[side] = xrays_through_enemy(scan, side)
+            self.batteries[side], self.battery_at_king[side] = batteries(scan, side)
+
+
+def threats(facts: Threats, w: Writer) -> None:
+    for side in (0, 1):
+        w.count(len(facts.threatened[side]), 4.0)
+    for side in (0, 1):
+        w.count(facts.threatened_value[side], 20.0)
+    for side in (0, 1):
+        w.count(facts.max_gain[side], 9.0)
+    for side in (0, 1):
+        w.count(len(facts.attacked_by_lesser[side]), 4.0)
+    for side in (0, 1):
+        w.bit(facts.queen_attacked_by_lesser[side])
+    for side in (0, 1):
+        w.count(len(facts.overloaded[side]), 4.0)
+    for side in (0, 1):
+        w.count(len(facts.removable[side]), 4.0)
+    for side in (0, 1):
+        w.count(len(facts.loose[side]), 8.0)
+    for side in (0, 1):
+        w.count(len(facts.surplus[side]), 4.0)
+    for side in (0, 1):
+        w.count(facts.xrays[side], 4.0)
+    for side in (0, 1):
+        w.count(facts.batteries[side], 4.0)
+    for side in (0, 1):
+        w.bit(facts.battery_at_king[side])
 
 
 # --------------------------------------------------------------------------
@@ -1371,6 +1524,7 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
     null = b.null_move(position)
     exchange_block(see_of_captures(position), writers["exchange"])
     exchange_block(see_of_captures(null), writers["exchange"])
+    threats(Threats(scan), writers["threats"])
     tactics_block(Tactics(scan, position, 0, attack_facts), writers["tactics"])
     tactics_block(Tactics(scan, null, 1, attack_facts), writers["tactics"])
     endgame(scan, pawn_facts, writers["endgame"])

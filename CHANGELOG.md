@@ -42,6 +42,13 @@
   `winning_capture_max_gain`, `equal_capture_count` and `losing_capture_count`
   redefined from the exchange instead of the 1-ply victim-versus-capturer
   test. SEE is no longer on the excluded list of `features.md` §4.
+- The new `threats` group, `Facts::threats`: what each side stands to lose,
+  read from the exchange on each of its own units — which are threatened, what
+  they are worth and the largest gain against them — plus the units a lesser
+  enemy unit attacks, the overloaded and removable defenders, the loose units,
+  the units more cheap attackers bear on than defenders, and the slider
+  geometry a threat comes from: x-rays through an enemy unit, batteries, and
+  batteries whose line meets the enemy king ring.
 
 ## 0.1.0 (2026-09-03)
 
