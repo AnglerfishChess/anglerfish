@@ -17,6 +17,11 @@
 - The new `placement` group: the raw board as twelve 64-square planes in the
   mover's view, so a run measuring the augmentation against the board alone
   selects a group instead of building its own input. `Facts::placement`.
+- Static exchange evaluation: `Position::see` and `Position::see_capture`, the
+  new `exchange` group over them, and `tactics.winning_capture_available`,
+  `winning_capture_max_gain`, `equal_capture_count` and `losing_capture_count`
+  redefined from the exchange instead of the 1-ply victim-versus-capturer
+  test. SEE is no longer on the excluded list of `features.md` §4.
 
 ## 0.1.0 (2026-09-03)
 

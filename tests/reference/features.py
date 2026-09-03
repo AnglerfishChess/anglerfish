@@ -782,6 +782,75 @@ def attacks(scan: Scan, facts: AttackFacts, w: Writer) -> None:
 
 
 # --------------------------------------------------------------------------
+# exchange
+
+
+def least_valuable_attacker(
+    position: Position, square: int, colour: str, occupied: frozenset[int]
+) -> tuple[int, str] | None:
+    """The cheapest unit of ``colour`` still on ``occupied`` that attacks ``square``."""
+    best: tuple[int, str] | None = None
+    for origin in sorted(occupied):
+        piece = position.board[origin]
+        if piece is None or piece[0] != colour:
+            continue
+        if square not in attacks_of(piece[1], origin, colour, occupied):
+            continue
+        if best is None or ORDER[piece[1]] < ORDER[best[1]]:
+            best = (origin, piece[1])
+    return best
+
+
+def swap(position: Position, square: int, colour: str, occupant: int, occupied: frozenset[int]) -> int:
+    """What ``colour`` wins by capturing the unit worth ``occupant`` on ``square``."""
+    found = least_valuable_attacker(position, square, colour, occupied)
+    if found is None:
+        return 0
+    origin, role = found
+    left = occupied - {origin}
+    # A king captures only what the other side has stopped defending.
+    if role == "k" and least_valuable_attacker(position, square, other(colour), left) is not None:
+        return 0
+    promotes = role == "p" and relative_rank(square, colour) == 8
+    landed = "q" if promotes else role
+    gain = (
+        occupant
+        + (VALUE["q"] - VALUE["p"] if promotes else 0)
+        - swap(position, square, other(colour), VALUE[landed], left)
+    )
+    return max(gain, 0)
+
+
+def see_capture(position: Position, move: Move) -> int:
+    """The static exchange evaluation of ``move``."""
+    if move.castling:
+        return 0
+    us = position.side_to_move
+    mover = role_at(position, move.frm)
+    taken = victim_square(move)
+    victim = position.board[taken]
+    captured = 0 if victim is None else VALUE[victim[1]]
+    landed = move.promotion or mover
+    promoted = VALUE[landed] - VALUE["p"] if move.promotion else 0
+    occupied = (occupancy(position) - {move.frm, taken}) | {move.to}
+    return captured + promoted - swap(position, move.to, other(us), VALUE[landed], occupied)
+
+
+def see_of_captures(position: Position | None) -> list[int]:
+    """The SEE of every capture the side to move has."""
+    if position is None:
+        return []
+    return [see_capture(position, move) for move in b.legal_moves(position) if move.capture]
+
+
+def exchange_block(sees: list[int], w: Writer) -> None:
+    w.diff(max(sees, default=0), 9.0)
+    w.count(sum(1 for see in sees if see > 0), 8.0)
+    w.count(sum(1 for see in sees if see == 0), 8.0)
+    w.count(sum(see for see in sees if see > 0), 20.0)
+
+
+# --------------------------------------------------------------------------
 # tactics
 
 
@@ -919,19 +988,16 @@ class Tactics:
 
             if victim is not None:
                 self.capture_count += 1
-                gain = VALUE[victim] - VALUE[mover_role]
-                defended = victim_square(move) in scan.by[1 - mover]
-                if gain > 0 or not defended:
-                    self.winning_capture = True
-                self.winning_gain = max(self.winning_gain, max(gain, 0))
+                see = see_capture(position, move)
+                self.winning_capture = self.winning_capture or see > 0
+                self.winning_gain = max(self.winning_gain, max(see, 0))
                 if captures_hanging:
                     self.captures_hanging = True
                     self.hanging_max = max(self.hanging_max, VALUE[victim])
-                if defended:
-                    if gain == 0:
-                        self.equal_captures += 1
-                    elif gain < 0:
-                        self.losing_captures += 1
+                if see == 0:
+                    self.equal_captures += 1
+                elif see < 0:
+                    self.losing_captures += 1
 
             enemy_units = set(after.squares_of(enemy_colour))
             reach = set(attacks_of(landed_role, to, mover_colour, occupied))
@@ -1064,8 +1130,11 @@ def encode(fen: str, variant: str = "chess") -> list[float]:
     king(scan, writers["king"])
     mobility(scan, writers["mobility"])
     attacks(scan, attack_facts, writers["attacks"])
+    null = b.null_move(position)
+    exchange_block(see_of_captures(position), writers["exchange"])
+    exchange_block(see_of_captures(null), writers["exchange"])
     tactics_block(Tactics(scan, position, 0, attack_facts), writers["tactics"])
-    tactics_block(Tactics(scan, b.null_move(position), 1, attack_facts), writers["tactics"])
+    tactics_block(Tactics(scan, null, 1, attack_facts), writers["tactics"])
     planes(scan, attack_facts, writers["planes"])
 
     values: list[float] = []
