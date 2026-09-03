@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-09-03)
 
 - PGN, behind the `pgn` feature and always in the wheel: `pgn::Reader` over a
   file or a string, tolerant of the archives in the wild and, with
