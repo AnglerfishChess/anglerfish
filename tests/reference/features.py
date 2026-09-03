@@ -41,6 +41,7 @@ CLASSIC_ONLY = {
     ("pieces", "queen_developed"),
     ("king", "king_on_home_square"),
     ("king", "king_castled_zone"),
+    ("king", "castled_side"),
 }
 
 MINOR_ROLES = ("n", "b", "r", "q")
@@ -697,6 +698,41 @@ def storm_bucket(distance: int | None) -> int:
     return distance - 2
 
 
+#: The eight directions a ray leaves a king by, as (file, rank) steps.
+RAYS = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
+
+
+def open_rays(scan: Scan, king: int) -> int:
+    """Directions from `king` holding at least one square, none of them occupied."""
+    total = 0
+    for step_file, step_rank in RAYS:
+        file, rank = file_of(king) + step_file, rank_of(king) + step_rank
+        squares = []
+        while 0 <= file <= 7 and 0 <= rank <= 7:
+            squares.append(square_at(file, rank))
+            file, rank = file + step_file, rank + step_rank
+        if squares and not any(square in scan.occupied for square in squares):
+            total += 1
+    return total
+
+
+def ahead_of_the_back_rank(scan: Scan, king: int, side: int) -> set[int]:
+    """The relative rank 2 squares adjacent to a king on its relative rank 1."""
+    return {scan.relative_square(file, 2, side) for file in [file_of(king), *adjacent_files(file_of(king))]}
+
+
+def castled_side(scan: Scan, side: int) -> int:
+    """One-hot slot 0 short, 1 long, 2 neither, read off the square and the rights."""
+    if any(right is not None for right in scan.position.rights(scan.colour[side])):
+        return 2
+    file = file_of(scan.kings[side])
+    if file >= 6:
+        return 0
+    if file <= 2:
+        return 1
+    return 2
+
+
 def king(scan: Scan, w: Writer) -> None:
     kings = scan.kings
     files = [shield_files(file_of(kings[side])) for side in (0, 1)]
@@ -775,6 +811,30 @@ def king(scan: Scan, w: Writer) -> None:
         w.count(f32(mean), 8.0)
     for side in (0, 1):
         w.count(len(attacks_of("q", kings[side], scan.colour[side], scan.occupied)), 27.0)
+
+    defenders = [0, 0]
+    defence_weight = [0, 0]
+    for side in (0, 1):
+        for role in MINOR_ROLES:
+            for square in scan.role_units[side][role]:
+                if scan.attacks_from[square] & rings[side]:
+                    defenders[side] += 1
+                    defence_weight[side] += weights[role]
+    for side in (0, 1):
+        w.count(defenders[side], 6.0)
+    for side in (0, 1):
+        w.count(defence_weight[side], 16.0)
+    for side in (0, 1):
+        w.diff(weight[side] - defence_weight[side], 16.0)
+    for side in (0, 1):
+        w.count(open_rays(scan, kings[side]), 8.0)
+    for side in (0, 1):
+        ahead = ahead_of_the_back_rank(scan, kings[side], side)
+        free = ahead - scan.occupied - scan.by[1 - side]
+        w.bit(scan.relative_rank(kings[side], side) == 1 and bool(free))
+    for side in (0, 1):
+        w.one_hot(castled_side(scan, side), 3)
+    w.bit((file_of(kings[0]) <= 3) != (file_of(kings[1]) <= 3))
 
 
 # --------------------------------------------------------------------------

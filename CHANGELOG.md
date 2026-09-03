@@ -57,6 +57,13 @@
   whether it leaves a piece hanging, and whether it uncovers a slider.
   `esca.MOVE_WIDTH` and `MoveFacts::WIDTH` say 40; the position schema and its
   `schema_id` are untouched.
+- `king` gains the defensive half of the siege and the exposure a player reads
+  off the board: the pieces defending their own king's ring and their weight,
+  the besieging weight less that, the open rays off the king, whether it has
+  luft, which side it reads as having castled to, and whether the two kings
+  stand on opposite wings. `KingFacts` carries them, with the `CastledSide`
+  enum and `KingFacts::ring_attacker_surplus`; `castled_side` joins the
+  features `features.md` §4 keeps to classic chess.
 
 ## 0.1.0 (2026-09-03)
 
