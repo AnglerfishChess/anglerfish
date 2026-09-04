@@ -21,6 +21,25 @@
   move would earn without playing it.
 - Python has it as `esca.explain`, reached from methods on `Position` and
   `Game`. None of it is part of the feature schema.
+- The UCI client speaks asynchronously on both surfaces. Rust gains the `tokio`
+  feature and `uci::tokio::Engine`: the same conversation, the same values and
+  the same `Error` as the blocking `Engine`, with every method awaited and
+  every future cancellation-safe. A search let go of unanswered asks the engine
+  to stop, and the engine settles on its next call, since a drop cannot wait.
+- `esca.uci.AsyncEngine` is asyncio all the way down: it drives the process
+  itself, with no worker thread and no blocking call under it, so `run`, which
+  named that thread, is gone. Cancelling an awaited `play`, `analyse` or
+  `answer` stops the search and leaves the engine usable. Its `timeout` is
+  settable, as the blocking `Engine`'s is.
+- `esca.uci.protocol` puts the protocol core on the Python surface, for a
+  client of one's own: `Command` constructors that render a line, `parse`
+  reading one line of engine output into a `Message`, and `Session` saying what
+  may come next.
+- Both Rust clients and the asyncio one cap the lines an engine has written and
+  the client has not read at 4096. The oldest line that carries no part of the
+  conversation goes first, and `dropped_lines` counts what went, so an engine
+  writing faster than it is read costs a bounded amount of memory rather than
+  its answer.
 
 ## 0.2.1 (2026-09-04)
 
