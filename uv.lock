@@ -23,7 +23,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "esca", editable = "rs_anglerfish/esca" },
+    { name = "esca", specifier = ">=0.3,<0.4" },
     { name = "numpy", specifier = ">=1.26,<2" },
     { name = "torch", specifier = ">=2.2.2,<2.3" },
 ]
@@ -55,13 +55,19 @@ wheels = [
 
 [[package]]
 name = "esca"
-source = { editable = "rs_anglerfish/esca" }
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.26" }]
+sdist = { url = "https://files.pythonhosted.org/packages/64/04/3b7847dbf262a07e40c51b408c20d6c618bbb117fd57326ccf9efc0d63a3/esca-0.3.0.tar.gz", hash = "sha256:b504d340c3d8e24f5d7d0f7f65d57565141447fa7a01a9473270f24f61e5c436", size = 533441 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/ce/2d44b12002d39b04d82bf00103d6b5a1c5b3e8b2ab136bcf487e58b2bac2/esca-0.3.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:1d2732e30a5b05e6c5be01b75cca76bcd5d03174f161aafc54c41e4a877ad9dc", size = 1472673 },
+    { url = "https://files.pythonhosted.org/packages/ee/17/ad1e1f131634d73c25453d410f0334e830261650c9b600756d41ae947ab6/esca-0.3.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:a518855be3443da7c1cc39775bce66d65b845ca87af0c50a9ede4e46afe72f4c", size = 1445632 },
+    { url = "https://files.pythonhosted.org/packages/85/70/b258f06e87fef2d5c39453e16fa656da8c8fbfb91c8d4ea1c51406ae170c/esca-0.3.0-cp312-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:598fde0423fa98062f6d8cd17bf27f49781cf647e051e068f0d9dd7332a41025", size = 1537575 },
+    { url = "https://files.pythonhosted.org/packages/4c/7a/5a52d6556d16760017213abd0a5b87aa2c6ccfbb136243c5d3a76034fd75/esca-0.3.0-cp312-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3c00f203f40f27943cf3dce37d983c78d93e6ea5e5df7b91f9cf105a8f19151a", size = 1584379 },
+    { url = "https://files.pythonhosted.org/packages/a3/30/d8443b3a05e27e568dd2abac59d03d1a931a8e48b227a0b1a734f846a4eb/esca-0.3.0-cp312-abi3-win_amd64.whl", hash = "sha256:9caaf8ea4649d9a1b482e646cb35a855de20102182e47daac89ac9b34e761916", size = 1324907 },
+]
 
 [[package]]
 name = "execnet"

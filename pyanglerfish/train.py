@@ -94,7 +94,7 @@ def _losses(
 
 @torch.no_grad()
 def evaluate(net: TwoHeadNet, batches: list[dict[str, torch.Tensor]], device: torch.device) -> Metrics:
-    """The metrics of `docs/features.md` §7 over the given batches."""
+    """The metrics of esca's `features.md` §7 over the given batches."""
     was_training = net.training
     net.eval()
     rows = 0

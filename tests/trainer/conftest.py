@@ -9,6 +9,5 @@ import pytest
 
 @pytest.fixture(scope="session")
 def sample_dump() -> Path:
-    """The synthetic evaluation dump the `esca` tests ship."""
-    root = Path(__file__).resolve().parents[2]
-    return root / "rs_anglerfish" / "esca" / "tests" / "data" / "lichess_sample.jsonl.zst"
+    """A dozen records in the format of the Lichess evaluation dump."""
+    return Path(__file__).resolve().parents[1] / "data" / "lichess_sample.jsonl.zst"

@@ -157,7 +157,9 @@ once for the scale fit before the first optimiser step.
 
 ## 6. Metrics
 
-Reported on the held-out slice, per `features.md` §7: value MAE and RMSE on
+Reported on the held-out slice, per esca's
+[`features.md`](https://github.com/AnglerfishChess/esca/blob/main/docs/features.md)
+§7: value MAE and RMSE on
 the probability scale and sign accuracy; policy top-1 and top-3 agreement with
 the labelled best move; both heads' losses. Per-group ablation is not wired
 up, but the group list is a config knob, so a run per group is a shell loop.

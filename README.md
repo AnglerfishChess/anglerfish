@@ -1,19 +1,17 @@
 # Anglerfish
 
-[![crates.io](https://img.shields.io/crates/v/esca)](https://crates.io/crates/esca)
-[![PyPI](https://img.shields.io/pypi/v/esca)](https://pypi.org/project/esca/)
-[![Python](https://img.shields.io/pypi/pyversions/esca)](https://pypi.org/project/esca/)
 [![CI](https://github.com/AnglerfishChess/anglerfish/actions/workflows/ci.yml/badge.svg)](https://github.com/AnglerfishChess/anglerfish/actions/workflows/ci.yml)
-[![Publish](https://github.com/AnglerfishChess/anglerfish/actions/workflows/publish.yml/badge.svg)](https://github.com/AnglerfishChess/anglerfish/actions/workflows/publish.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A chess engine that plays from a learned evaluation, and the trainer that produces it.
 
 The engine is Rust: a UCI front end, a search, and an evaluator the net plugs into. The trainer is
 Python: it reads the Lichess evaluation dump, turns positions into feature rows, and fits the net
-the engine loads. The two meet at [`esca`](rs_anglerfish/esca) — the chess model that answers what
-is true about a position, and the versioned schema of the row a net eats. `esca` is the one part
-meant to be useful on its own: it is a crate and a Python package, published from this repository.
+the engine loads.
+
+Relies on [`esca`](https://github.com/AnglerfishChess/esca) — the chess library both sides read
+positions through: rules, position facts, PGN, opening books and a UCI client, as the `esca` crate
+and the `esca` Python package.
 
 ## Layout
 
@@ -21,9 +19,8 @@ meant to be useful on its own: it is a crate and a Python package, published fro
 pyanglerfish/       trainer, data tooling, CLI                      (Python)
 tests/              tests for the Python side
 rs_anglerfish/      Cargo workspace                                 (Rust)
-  esca/             chess model, position facts, the wheel          (published)
   anglerfish-core/  engine: UCI, search, evaluator interface
-docs/               architecture, the esca API, the feature schema
+docs/               architecture and training
 data-external/      the Lichess dump; gitignored, symlinked in worktrees
 ```
 
@@ -62,10 +59,8 @@ uvx uci-test-suite ./target/release/anglerfish
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — the crates, and why they are split that way.
-- [`docs/esca-api.md`](docs/esca-api.md) — the esca API in both languages.
-- [`docs/esca-vocabulary.md`](docs/esca-vocabulary.md) — the terms everything is named after.
-- [`docs/features.md`](docs/features.md) — the facts, and how they encode into a row.
+- [`docs/architecture.md`](docs/architecture.md) — the engine, the trainer, and how they are split.
+- [`docs/training.md`](docs/training.md) — the dump pipeline, the net and the checkpoint.
 
 ## License
 
@@ -73,6 +68,6 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgements
 
-Lichess, for the evaluation dump, the game database and the opening names; cozy-chess, for the
-move generator; Stockfish and Leela Chess Zero, the engines everything is tested against. The
-full list, with licences, is in [`rs_anglerfish/esca/README.md`](rs_anglerfish/esca/README.md).
+Lichess, for the evaluation dump and the game database; Stockfish and Leela Chess Zero, the engines
+this one spars with and is measured against. The library's own credits are in
+[esca's README](https://github.com/AnglerfishChess/esca#acknowledgements).

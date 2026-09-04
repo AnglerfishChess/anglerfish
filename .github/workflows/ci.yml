@@ -10,21 +10,13 @@ defaults:
     working-directory: rs_anglerfish
 
 jobs:
-  esca-python:
-    # The wheel is built from the crate by maturin, so this job needs cargo.
-    # Every Python test needs the built `esca`, so they all run here.
+  python:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: .
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.85.1"
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rs_anglerfish
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -36,11 +28,7 @@ jobs:
       - run: uvx pyrefly check
 
   rust:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Pinned to the workspace's rust-version so clippy findings are reproducible.
@@ -53,28 +41,8 @@ jobs:
           workspaces: rs_anglerfish
       - run: cargo build --release
       - run: cargo test
-      - run: cargo test --features lichess
-      - run: cargo test --features openings
-      - run: cargo test --features pgn
-      - run: cargo test --features polyglot
-      - run: cargo test --features uci
-      - run: cargo test --features tokio
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-
-  perft:
-    # Billions of nodes: once per run, not once per platform.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.85.1"
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rs_anglerfish
-      - run: cargo test --release -- --ignored
 
   conformance:
     runs-on: ubuntu-latest

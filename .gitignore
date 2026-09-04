@@ -51,9 +51,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# The compiled esca extension, built in place by an editable install
-*.so
-*.pyd
-
 # Rust
 target/

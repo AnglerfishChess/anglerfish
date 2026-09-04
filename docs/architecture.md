@@ -1,7 +1,9 @@
-# Crate architecture
+# Architecture
 
-The Rust side of Anglerfish: a Cargo workspace of small crates, one of which —
-`esca` — is meant to be useful outside this project.
+Two sides of one project: a Rust engine that plays, and a Python trainer that
+fits the net it plays from. Both read chess through
+[`esca`](https://github.com/AnglerfishChess/esca) — an external dependency,
+the `esca` crate on crates.io and the `esca` package on PyPI.
 
 ---
 
@@ -11,11 +13,11 @@ The Rust side of Anglerfish: a Cargo workspace of small crates, one of which —
 anglerfish/
   pyproject.toml        hatchling, the pure-Python side
   pyanglerfish/         the trainer: data, scale, model, train  (training.md)
+  tests/                the trainer's tests
   rs_anglerfish/        Cargo workspace root
     Cargo.toml          [workspace] members
-    esca/               chess model + position facts + wheel     (public)
-    anglerfish-core/    engine: search, UCI, evaluator trait      (internal)
-    anglerfish-nn/      net loading and forward pass              (internal, phase 2)
+    anglerfish-core/    engine: search, UCI, evaluator trait
+    anglerfish-nn/      net loading and forward pass              (phase 2)
   data-external/        the Lichess dump, gitignored, symlinked in worktrees
   docs/
 ```
@@ -23,9 +25,8 @@ anglerfish/
 | Decision | Reason |
 |---|---|
 | Rust under `rs_anglerfish/`, not at the repo root | The repo root is already a hatchling Python project (`packages = ["pyanglerfish"]`). One directory per language keeps `cargo` commands, `target/` and the workspace root in one place, and mirrors the existing `pyanglerfish/`. |
-| One workspace, several crates | `esca` must be publishable and depend on nothing of ours; the engine and the net must not force their dependencies on it. |
+| One workspace, several crates | The net's dependencies — inference backend, checkpoint format — must not reach the engine that can run without a net. |
 | The UCI binary lives in `anglerfish-core` as `src/main.rs` | Same shape as anglerfry. A separate binary crate would buy nothing. |
-| The Python binding and the dump reader are Cargo features of `esca`, not crates | Both are thin skins over the same types. A separate crate would re-export the whole API to add a decorator to it. |
 
 Edition 2024, `rust-version = "1.85.1"` for every crate, matching anglerfry.
 MSRV is raised only when a dependency forces it, and the bump is a release
@@ -36,62 +37,43 @@ note.
 ## 2. Dependency graph
 
 ```
-   cozy-chess (MIT)   pyo3, numpy,     zstd, serde_json
-          |            rayon            (feature
-          |            (feature python)  lichess)
-          |               |                 |
-          +───────────── esca ──────────────+
-                          |
-                  anglerfish-core
-                          |
-                    anglerfish-nn         (phase 2)
+                  esca (crates.io, PyPI)
+                    |            |
+            anglerfish-core   pyanglerfish
+                    |
+              anglerfish-nn         (phase 2)
 ```
 
-Ten lines of rules:
-
-1. `esca` depends on `cozy-chess` and nothing else of ours.
-2. No `cozy_chess` item appears in `esca`'s public API, in either language.
-3. The default build of `esca` has no PyO3, no I/O, no async, and no
-   allocation in the hot path; `python` and `lichess` are off by default.
-4. `anglerfish-core` depends on `esca`, `log`, `env_logger` and `rand`, and on
+1. `anglerfish-core` depends on `esca`, `log`, `env_logger` and `rand`, and on
    no chess library of its own.
-5. `anglerfish-nn` depends on `esca` and the net format crate; `core` depends
+2. `anglerfish-nn` depends on `esca` and the net format crate; `core` depends
    on `nn` behind a feature flag.
-6. No crate of ours enables `esca/python`; only the wheel build does.
-7. `esca` never depends on `core` or `nn`.
-8. The Rust crate `esca` and the Python package `esca` are one source tree and
-   one version.
-9. Every dependency in the tree carries a permissive licence (MIT/Apache/BSD-class).
-10. `cargo metadata` licence check runs in CI on every crate.
+3. `esca` is taken with its default features: no PyO3, no I/O, no async in the
+   engine's build.
+4. The trainer takes the `esca` wheel as an ordinary dependency; nothing here
+   builds it.
+5. Versions on both sides are independent of `esca`'s; the coupling that
+   matters is `schema_id`.
+6. Every dependency in the tree carries a permissive licence (MIT/Apache/BSD-class).
+7. `cargo metadata` licence check runs in CI on every crate.
 
 ---
 
-## 3. `esca` — chess model and position facts (public, reusable)
+## 3. `esca` — the chess model (external)
 
-Answers "what is true about this position" and "what is true about this move",
-in a chess model of its own: `Variant` (`Classic`, `Chess960`), `Position`,
-`Game`, `Move`, `SquareSet`, `Facts`, `Schema`. cozy-chess supplies board
-representation and move generation as an implementation detail.
+Answers "what is true about this position" and "what is true about this move":
+`Variant` (`Classic`, `Chess960`), `Position`, `Game`, `Move`, `SquareSet`,
+`Facts`, `Schema`, and the versioned `f32` row a net eats. Its API, vocabulary
+and feature schema are documented in
+[its own repository](https://github.com/AnglerfishChess/esca), which is also
+where its tests, fixtures and benchmarks live.
 
-Two audiences, one computation: a reader who wants a readable question
-answered (`facts.pawns.passed[Us]`), and a net that wants a flat `f32` row.
-
-| Document | Contents |
-|---|---|
-| [`esca-api.md`](esca-api.md) | Every public signature, in Rust and in Python. |
-| [`esca-vocabulary.md`](esca-vocabulary.md) | Every term the API and the docs use. |
-| [`features.md`](features.md) | Feature definitions, encodings, group widths, schema versioning. |
-
-| Public | Internal |
-|---|---|
-| The types above, `MoveFacts`, `GroupSet`, `Scratch`, the encoders, the `lichess` reader, the glossary | Attack-map construction, scratch layout, per-group writers, every cozy-chess type |
-
-Cargo features: `python` (§5), `lichess` (dump reader), `serde` (manifest and
-value serialisation).
-
-A search node extracts facts through `Position::facts_in`, which allocates
-nothing and reuses a caller-owned `Scratch`. Rows in the batch encoders are
-independent; the caller parallelises, the crate spawns no threads.
+What this project relies on beyond the types: `Position::facts_in` allocates
+nothing and reuses a caller-owned `Scratch`, so a search node extracts facts
+without touching the allocator; rows in the batch encoders are independent, so
+the trainer parallelises and the library spawns no threads; `schema_id` pins
+the row shape, so a checkpoint and an installed `esca` either agree or the load
+fails.
 
 ---
 
@@ -137,45 +119,18 @@ having a batch method, and `Score` being convertible between the two scales.
 
 ---
 
-## 5. Python packaging of `esca`
+## 5. Python packaging
 
-One source tree produces the crate and the wheel — maturin's mixed layout:
-
-```
-rs_anglerfish/esca/
-  Cargo.toml            the crate
-  pyproject.toml        maturin backend, project name `esca`
-  src/                  Rust, including the PyO3 module behind feature `python`
-  python/esca/
-    __init__.py         re-exports the compiled extension
-    __init__.pyi        what the package exports
-    _esca.pyi           stubs for the whole compiled surface
-    lichess.py          the dump batches, re-exported
-    lichess.pyi
-    py.typed
-  python/tests/         the Python side's tests
-```
-
-Import name and distribution name are both `esca`. Wheels are built with
-`--features python,lichess,pyo3/extension-module`, the last of which a test
-binary must not have, because it resolves the interpreter's symbols itself;
-`abi3` from the lowest supported CPython, so one wheel per platform covers
-every version.
-
-The root `anglerfish` project stays hatchling and pure-Python, and depends on
-`esca` as a local editable source:
+The root project is hatchling and pure Python — `pyanglerfish` and its tests —
+and takes the compiled `esca` as a plain wheel:
 
 ```toml
 [project]
-dependencies = ["esca", …]
-
-[tool.uv.sources]
-esca = { path = "rs_anglerfish/esca", editable = true }
+dependencies = ["esca>=0.3,<0.4", …]
 ```
 
-`uv sync` then builds the extension in place, and a Rust change reaches the
-trainer by re-running it. Publishing `esca` to PyPI and crates.io is M4 and
-the owner's decision.
+`uv sync --all-groups` installs it; a newer `esca` reaches the trainer through
+`uv lock`, and a `schema_id` change through a retrained net.
 
 ---
 
@@ -192,14 +147,8 @@ is a net to load.
 
 | Kind | What |
 |---|---|
-| **Differential — facts** | A slow, readable Python reference of every feature (`tests/reference/`, driven by `tests/test_reference_v1.py`), over plain FEN parsing and explicit loops; it has no third-party chess dependency. Both implementations run on a corpus of ~20k positions sampled from the dump plus hand-picked cases (checks, promotions, en passant, opposite bishops, back-rank mates, bare-king endgames); every value must match exactly. The reference is the specification's executable form; when they disagree, `features.md` decides which one is wrong. |
-| **Differential — rules** | Move generation and terminal conditions against published perft counts: the classic start position and the standard tricky FENs to depth 6, and Chess960 start positions to depth 5. Plus known-answer cases per variant: castling through and out of check, castling where king or rook destination coincides with an origin, en-passant pins, promotion under check, and every draw condition of `esca-vocabulary.md` §3. |
-| **Property** | With `proptest` over random legal positions: mirror invariance (facts of a position equal facts of its colour-and-rank-mirrored twin with the sides exchanged); determinism; emitted length equals the declared width; every value finite and within [−1, 1]; every square-set-derived mask a subset of its base; `facts_in` output identical to `facts` output. |
-| **Stability** | Golden fixtures: 231 fixed classic FENs and 60 Chess960 ones with their vectors, under `rs_anglerfish/esca/tests/data/` and regenerated by `cargo run --release --example fixtures`, stored per schema version. A changed output fails until the group version is bumped and a new fixture added. Old fixtures are kept and still checked while their group version is supported. |
-| **Schema** | `schema_id` is recomputed in a test and compared with a checked-in constant; the canonical text is a golden file. |
-| **Python** | The stubs typecheck against the compiled module; `pyrefly` runs over `python/esca/`. Round-trips: pickle, hash, and `Position`/`Move` equality. |
 | **Engine** | Inherited from anglerfry: legality of every played move in self-play, under both variants; protocol behaviour driven over the binary's stdin and stdout; `Limits` read from any `go` line under `proptest`; UCI conformance via `uci-test-suite`. |
-| **Benchmarks** | `criterion`: nanoseconds per position for the whole extractor and per group, on a fixed 10k corpus. Regressions above 10 % fail CI. |
+| **Trainer** | `pytest` over a synthetic dump: the read pipeline and its split filters, the fitted value scale, the net's shapes and its masking of padded moves, and the checkpoint round-trip including the `schema_id` refusal. |
 
 ---
 
@@ -210,4 +159,4 @@ is a net to load.
 | **M1** | `esca` core: `Variant` with `Classic` and `Chess960`, `Position`, `Game`, UCI and SAN move text, `Facts` with the v0 groups `state`, `material`, `pawns`, `pieces`, `king`, `mobility`, `attacks`, `tactics`, `planes`, `MoveFacts`, `Schema` and `schema_id`, batch encoding. Feature `python`: the module and its stubs. Feature `lichess`: the dump reader. `anglerfish-core` copied from anglerfry with the `Evaluator`/`Policy` traits and the material evaluator behind them. Differential, property, stability tests. Benchmarks. |
 | **M2** | The trainer of [`training.md`](training.md): the dump pipeline, the two-head net, the fitted value scale and the checkpoint manifest. Then `anglerfish-nn`, the schema check on load, and the first trained net serving `Evaluator`. |
 | **M3** | The search family, chosen on measurements: transposition table, time management, quiescence and SEE if alpha-beta wins; tree, PUCT and leaf batching if MCTS does. |
-| **M4** | Publishing `esca` to crates.io and PyPI, after the API has survived M2. Owner's decision, per repo policy. |
+| **M4** | `esca` published to crates.io and PyPI: done, and continued in [its own repository](https://github.com/AnglerfishChess/esca). |
