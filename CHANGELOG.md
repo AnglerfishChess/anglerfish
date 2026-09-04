@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- The `explain` layer answers a rules question with the evidence behind it,
+  every reason that applies at once and each carrying the squares it was read
+  off. `Position::castling` names the right, the rook, the check, every
+  covered square of the king's path with the units covering it, and every
+  unit standing on the path; `en_passant_status` names each pawn that could
+  take and what forbids it, the rank pin that binds neither pawn alone
+  included. `checkers`, `attackers`, `between`, `pins` and `skewers` hand over
+  the squares behind an answer. Chess960 throughout: the castling path is the
+  one the variant's rule names, so a king that never moves and a rook the king
+  crosses are answered by the same fields.
+- `Game::repetition_status` lists the plies the position has stood at and the
+  earlier plies with the same placement that do not count, with what differs;
+  `fifty_move_status` counts the clock down to the claim and to the automatic
+  draw and names the move that last cleared it; `draw_status` lists every draw
+  that holds rather than the first, a stalemate carrying the king's covered
+  escape squares and what holds each other unit; `claims_after` says what a
+  move would earn without playing it.
+- Python has it as `esca.explain`, reached from methods on `Position` and
+  `Game`. None of it is part of the feature schema.
+
 ## 0.2.1 (2026-09-04)
 
 - The PyPI wheels carry `esca.pgn` and `esca.uci`; 0.2.0's were built
