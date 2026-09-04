@@ -40,6 +40,22 @@
   conversation goes first, and `dropped_lines` counts what went, so an engine
   writing faster than it is read costs a bounded amount of memory rather than
   its answer.
+- `Position::polyglot_key`, needing no feature: the key the Polyglot format
+  fixes, the same number in every run and in every program that implements it,
+  so it is a key to store and to send where `Position::key` is not. Python
+  reads it as `position.polyglot_key`.
+- Opening books, behind the `polyglot` feature and always in the wheel:
+  `polyglot::Book` memory-maps a book and answers a position with its entries
+  in book order, its heaviest, or one drawn by weight from a seed; a move that
+  is not legal in the position asked about is refused, never guessed.
+  `Book::write` and `polyglot::Builder` go the other way, counting the moves
+  of played games or of a PGN source into a sorted, merged book with a maximum
+  ply and a minimum count. Python mirrors it as `esca.polyglot`, which also
+  has `download` for fetching a book to a path with an optional digest.
+- The ECO catalogue, behind the `openings` feature and always in the wheel:
+  `openings::lookup` gives a position its code and name, and `Game::opening`
+  the deepest one a game has reached. Keyed by position, so a transposition is
+  named. Python mirrors it as `esca.openings` and `game.opening()`.
 
 ## 0.2.1 (2026-09-04)
 
