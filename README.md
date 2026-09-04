@@ -70,3 +70,9 @@ uvx uci-test-suite ./target/release/anglerfish
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+Lichess, for the evaluation dump, the game database and the opening names; cozy-chess, for the
+move generator; Stockfish and Leela Chess Zero, the engines everything is tested against. The
+full list, with licences, is in [`rs_anglerfish/esca/README.md`](rs_anglerfish/esca/README.md).
