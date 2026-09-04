@@ -1,0 +1,22 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "anglerfish",
+  "description": "Chess engine in Rust with a Python trainer, built on the esca library.",
+  "url": "https://context7.com/anglerfishchess/anglerfish",
+  "public_key": "pk_oqKTKO3hmjBG756m5kers",
+  "folders": [
+    "docs",
+    "rs_anglerfish/anglerfish-core/src",
+    "pyanglerfish"
+  ],
+  "excludeFolders": [
+    "tests",
+    ".github",
+    "data-external"
+  ],
+  "rules": [
+    "anglerfish is the engine (Rust crate anglerfish-core, binary `anglerfish`, UCI) and the trainer (Python package pyanglerfish); the chess library both use is esca, from crates.io and PyPI: https://github.com/AnglerfishChess/esca.",
+    "The trainer streams the Lichess evaluation dump through esca.lichess.batches, encodes positions with esca's schema, and fits a two-head net (value, policy); the checkpoint carries the schema_id the engine checks on load.",
+    "Nothing is published from this repository yet; versions are independent of esca's."
+  ]
+}
