@@ -56,6 +56,7 @@ jobs:
       - run: cargo test --features lichess
       - run: cargo test --features pgn
       - run: cargo test --features uci
+      - run: cargo test --features tokio
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo clippy --all-targets --all-features -- -D warnings
