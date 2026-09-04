@@ -1,6 +1,6 @@
 [package]
 name = "anglerfish-core"
-version = "0.2.0"
+version = "0.2.1"
 description = "The Anglerfish chess engine: the UCI front end, the search, and the evaluator interface a net plugs into."
 publish = false
 edition.workspace = true

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 (2026-09-04)
+
+- The PyPI wheels carry `esca.pgn` and `esca.uci`; 0.2.0's were built
+  without them.
+
 ## 0.2.0 (2026-09-03)
 
 - PGN, behind the `pgn` feature and always in the wheel: `pgn::Reader` over a
