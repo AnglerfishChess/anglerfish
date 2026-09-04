@@ -1,5 +1,12 @@
 # Anglerfish
 
+[![crates.io](https://img.shields.io/crates/v/esca)](https://crates.io/crates/esca)
+[![PyPI](https://img.shields.io/pypi/v/esca)](https://pypi.org/project/esca/)
+[![Python](https://img.shields.io/pypi/pyversions/esca)](https://pypi.org/project/esca/)
+[![CI](https://github.com/AnglerfishChess/anglerfish/actions/workflows/ci.yml/badge.svg)](https://github.com/AnglerfishChess/anglerfish/actions/workflows/ci.yml)
+[![Publish](https://github.com/AnglerfishChess/anglerfish/actions/workflows/publish.yml/badge.svg)](https://github.com/AnglerfishChess/anglerfish/actions/workflows/publish.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A chess engine that plays from a learned evaluation, and the trainer that produces it.
 
 The engine is Rust: a UCI front end, a search, and an evaluator the net plugs into. The trainer is
