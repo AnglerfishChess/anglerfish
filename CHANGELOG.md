@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-09-04)
 
 - The `explain` layer answers a rules question with the evidence behind it,
   every reason that applies at once and each carrying the squares it was read
