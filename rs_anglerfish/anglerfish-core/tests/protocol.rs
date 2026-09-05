@@ -1,13 +1,15 @@
 //! Protocol behaviour of the engine binary, driven over its stdin and stdout.
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How long an expected reply may take.
-const TIMEOUT: Duration = Duration::from_secs(5);
+/// How long an expected reply may take: a bound on the machine, not on the
+/// engine, since a debug build searching on a loaded runner takes as long as it
+/// takes. An engine that dies is caught by its closed output, not by this.
+const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How long to wait before calling the engine silent.
 const SILENCE: Duration = Duration::from_millis(300);
@@ -30,6 +32,17 @@ const OPENINGS: [&str; 20] = [
     "a2a3", "a2a4", "b2b3", "b2b4", "c2c3", "c2c4", "d2d3", "d2d4", "e2e3", "e2e4", "f2f3", "f2f4",
     "g2g3", "g2g4", "h2h3", "h2h4", "b1a3", "b1c3", "g1f3", "g1h3",
 ];
+
+/// What came out of the engine while waiting for a line.
+#[derive(Debug)]
+enum Reply {
+    /// One line of output.
+    Line(String),
+    /// Nothing, for the whole wait.
+    Silence,
+    /// The engine closed its output, having exited or being about to.
+    Ended,
+}
 
 /// A running engine process.
 struct Engine {
@@ -77,31 +90,44 @@ impl Engine {
         writeln!(self.stdin, "{command}").expect("the engine to accept a command");
     }
 
-    /// The next line, waiting up to `patience` for it.
-    fn line(&mut self, patience: Duration) -> Option<String> {
+    /// Whatever the engine says next, waiting up to `patience` for it.
+    fn reply(&mut self, patience: Duration) -> Reply {
         match self.lines.recv_timeout(patience) {
-            Ok(line) => Some(line),
-            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => None,
+            Ok(line) => Reply::Line(line),
+            Err(RecvTimeoutError::Timeout) => Reply::Silence,
+            Err(RecvTimeoutError::Disconnected) => Reply::Ended,
+        }
+    }
+
+    /// The next line. Panics if the engine stays silent for `TIMEOUT` or ends.
+    fn line(&mut self) -> String {
+        match self.reply(TIMEOUT) {
+            Reply::Line(line) => line,
+            Reply::Silence => panic!("expected a line within {TIMEOUT:?}"),
+            Reply::Ended => panic!("expected a line; the engine {}", self.ending()),
         }
     }
 
     /// The lines up to and including the first one starting with `prefix`.
+    /// Panics if the engine stays silent for `TIMEOUT` or ends before it.
     fn until(&mut self, prefix: &str) -> Vec<String> {
-        self.until_within(TIMEOUT, prefix)
-    }
-
-    /// Like `until`, with its own patience for a search that is slow in a
-    /// debug build on a loaded machine.
-    fn until_within(&mut self, patience: Duration, prefix: &str) -> Vec<String> {
         let mut lines = Vec::new();
         loop {
-            let line = self
-                .line(patience)
-                .unwrap_or_else(|| panic!("expected a {prefix:?} line, got {lines:#?}"));
-            let found = line.starts_with(prefix);
-            lines.push(line);
-            if found {
-                return lines;
+            match self.reply(TIMEOUT) {
+                Reply::Line(line) => {
+                    let found = line.starts_with(prefix);
+                    lines.push(line);
+                    if found {
+                        return lines;
+                    }
+                }
+                Reply::Silence => {
+                    panic!("expected a {prefix:?} line within {TIMEOUT:?}, got {lines:#?}")
+                }
+                Reply::Ended => {
+                    let ending = self.ending();
+                    panic!("expected a {prefix:?} line; the engine {ending}, after {lines:#?}");
+                }
             }
         }
     }
@@ -112,23 +138,40 @@ impl Engine {
         line["bestmove ".len()..].to_owned()
     }
 
-    /// Panics unless nothing more arrives.
+    /// Panics unless the engine is still running and says nothing more.
     fn expect_silence(&mut self) {
-        if let Some(line) = self.line(SILENCE) {
-            panic!("expected silence, got {line:?}");
+        match self.reply(SILENCE) {
+            Reply::Silence => {}
+            Reply::Line(line) => panic!("expected silence, got {line:?}"),
+            Reply::Ended => panic!("expected silence; the engine {}", self.ending()),
         }
     }
 
-    /// The exit status, waiting up to `TIMEOUT` for the process to end.
+    /// Whether the engine exited well, waiting up to `TIMEOUT` for it to end.
     fn wait(&mut self) -> Option<bool> {
-        let deadline = Instant::now() + TIMEOUT;
-        while Instant::now() < deadline {
-            match self.child.try_wait().expect("the engine to be waitable") {
-                Some(status) => return Some(status.success()),
-                None => thread::sleep(Duration::from_millis(10)),
+        self.exit(TIMEOUT).map(|status| status.success())
+    }
+
+    /// The exit status, waiting up to `patience` for the process to end.
+    fn exit(&mut self, patience: Duration) -> Option<ExitStatus> {
+        let deadline = Instant::now() + patience;
+        loop {
+            if let Some(status) = self.child.try_wait().expect("the engine to be waitable") {
+                return Some(status);
             }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            thread::sleep(Duration::from_millis(10));
         }
-        None
+    }
+
+    /// Why the engine's output ended, worded for a panic message.
+    fn ending(&mut self) -> String {
+        match self.exit(SILENCE) {
+            Some(status) => format!("ended with {status}"),
+            None => "closed its output while still running".to_owned(),
+        }
     }
 }
 
@@ -163,7 +206,7 @@ fn identifies_itself_and_its_options() {
     );
 
     engine.send("isready");
-    assert_eq!(engine.line(TIMEOUT).as_deref(), Some("readyok"));
+    assert_eq!(engine.line(), "readyok");
 }
 
 #[test]
@@ -204,7 +247,7 @@ fn says_nothing_about_a_search_that_never_started() {
 
     engine.send("stop");
     engine.send("isready");
-    assert_eq!(engine.line(TIMEOUT).as_deref(), Some("readyok"));
+    assert_eq!(engine.line(), "readyok");
 }
 
 #[test]
@@ -229,7 +272,7 @@ fn survives_input_it_cannot_use() {
     engine.send("setoption name Nonsense value 1");
     engine.send("setoption name Strategy value nonsense");
     engine.send("isready");
-    assert_eq!(engine.line(TIMEOUT).as_deref(), Some("readyok"));
+    assert_eq!(engine.line(), "readyok");
 
     engine.send("go movetime 50");
     assert!(OPENINGS.contains(&engine.best_move().as_str()));
@@ -257,7 +300,7 @@ fn answers_a_search_for_a_mate() {
     engine.send("setoption name Strategy value two-ply");
     engine.send(&format!("position fen {MATE_IN_ONE}"));
     engine.send("go mate 1");
-    let lines = engine.until_within(Duration::from_secs(60), "bestmove");
+    let lines = engine.until("bestmove");
 
     assert_eq!(lines.last().map(String::as_str), Some("bestmove h5f7"));
     assert!(
