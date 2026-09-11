@@ -128,17 +128,18 @@ mod tests {
         }
     }
 
-    /// Plays both strategies against each other from `variant`'s `seed` start position,
-    /// checking that every move they pick is one the rules allow.
-    fn self_play(variant: Arc<dyn Variant>, seed: u64) {
+    /// Plays both strategies against each other from `variant`'s `seed` start position, for at
+    /// most `plies` plies searched `depth` deep, checking that every move they pick is one the
+    /// rules allow.
+    fn self_play(variant: Arc<dyn Variant>, seed: u64, plies: u32, depth: u8) {
         let mut game = Game::with_seed(variant, seed);
-        for ply in 0..40 {
+        for ply in 0..plies {
             if game.outcome().is_some() {
                 break;
             }
             let limits = Limits::new(
                 &Go {
-                    depth: Some(2),
+                    depth: Some(depth),
                     ..Go::default()
                 },
                 &game,
@@ -153,14 +154,31 @@ mod tests {
         }
     }
 
+    /// Plies of self-play a legality check covers.
+    const PLIES: u32 = 40;
+
+    /// The depth self-play searches to: the answer comes from the root move list whatever the
+    /// depth, so one ply buys the same legality check for a fraction of the nodes.
+    const DEPTH: u8 = 1;
+
     #[test]
     fn self_play_stays_legal() {
-        self_play(classic(), 0);
+        self_play(classic(), 0, PLIES, DEPTH);
     }
 
     #[test]
     fn self_play_stays_legal_in_chess960() {
         // A shuffled back rank, so castling is not the classic geometry.
-        self_play(chess960(), 42);
+        self_play(chess960(), 42, PLIES, DEPTH);
+    }
+
+    /// Chess960 numbers its 960 start positions, and `start_position` takes the seed modulo
+    /// that, so this covers every back rank there is. Minutes long; run it in release.
+    #[test]
+    #[ignore = "plays all 960 Chess960 start positions"]
+    fn self_play_stays_legal_from_every_chess960_start() {
+        for seed in 0..960 {
+            self_play(chess960(), seed, PLIES, DEPTH);
+        }
     }
 }

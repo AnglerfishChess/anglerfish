@@ -49,6 +49,12 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
+The `#[ignore]`d sweeps — every Chess960 start position — take minutes, and run nightly in CI:
+
+```sh
+cargo test --release -- --ignored
+```
+
 The engine reads UCI commands on stdin; add `rs_anglerfish/target/release/anglerfish` to any chess
 GUI. Set `RUST_LOG=debug` for a trace on stderr. Protocol conformance is checked with
 [uci-test-suite](https://github.com/AnglerfishChess/uci-test-suite):
