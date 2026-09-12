@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 env_logger = "0.11"
-esca = "0.3"
+esca = "0.4"
 log = "0.4"
 rand = "0.10"
 

@@ -1,10 +1,10 @@
 //! The material evaluator.
 
-use esca::{Facts, Position, Role, Score, Side};
+use esca::{ByColour, Colour, Facts, Position, Role, Score};
 
 use super::Evaluator;
 
-/// The roles `MaterialFacts::count` counts, in its order.
+/// The roles a material count is kept for, in `Role::ALL` order.
 const COUNTED: [Role; 5] = [
     Role::Pawn,
     Role::Knight,
@@ -31,15 +31,27 @@ impl Material {
         }
     }
 
-    /// The material balance in centipawns, from the side to move's point of
-    /// view.
-    pub fn balance(facts: &Facts) -> i32 {
-        let counts = &facts.material.count;
+    /// How many units of `role` each side has.
+    fn count(facts: &Facts, role: Role) -> ByColour<u8> {
+        let material = &facts.material;
+        match role {
+            Role::Pawn => material.pawns,
+            Role::Knight => material.knights,
+            Role::Bishop => material.bishops,
+            Role::Rook => material.rooks,
+            Role::Queen => material.queens,
+            Role::King => ByColour::new(1, 1),
+        }
+    }
+
+    /// The material balance in centipawns, from `mover`'s point of view.
+    pub fn balance(facts: &Facts, mover: Colour) -> i32 {
         COUNTED
             .into_iter()
             .map(|role| {
-                let ours = i32::from(counts[Side::Us.index()][role.index()]);
-                let theirs = i32::from(counts[Side::Them.index()][role.index()]);
+                let count = Material::count(facts, role);
+                let ours = i32::from(*count.of(mover));
+                let theirs = i32::from(*count.of(!mover));
                 Material::value(role) * (ours - theirs)
             })
             .sum()
@@ -47,8 +59,8 @@ impl Material {
 }
 
 impl Evaluator for Material {
-    fn value(&self, _position: &Position, facts: &Facts) -> Score {
-        Score::Cp(Material::balance(facts))
+    fn value(&self, position: &Position, facts: &Facts) -> Score {
+        Score::Cp(Material::balance(facts, position.side_to_move()))
     }
 }
 
@@ -84,7 +96,7 @@ mod tests {
         let position =
             Position::from_fen("4k3/8/8/8/8/8/8/3QK3 w - - 0 1").expect("a legal position");
         let facts = position.facts(classic().as_ref());
-        let items = [(position.clone(), facts.clone()), (position, facts)];
+        let items = [(position.clone(), facts), (position, facts)];
         let mut out = [Score::Cp(0); 2];
         Material.batch(&items, &mut out);
         assert_eq!(out, [Score::Cp(900); 2]);

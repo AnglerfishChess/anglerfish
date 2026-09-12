@@ -34,6 +34,8 @@ struct Search<'a> {
     evaluator: &'a dyn Evaluator,
     limits: &'a Limits,
     scratch: Scratch,
+    /// The move list a leaf answers the terminal question with.
+    leaf: MoveList,
     nodes: u64,
 }
 
@@ -46,13 +48,14 @@ impl Search<'_> {
         if position.halfmove_clock() >= DRAW_CLOCK {
             return 0;
         }
-        // A leaf: a node at depth zero, or one the stack has no room below. Its facts carry
-        // the legal moves, so the terminal question is answered without generating them twice.
+        // A leaf: a node at depth zero, or one the stack has no room below.
         let Some((moves, rest)) = stack.split_first_mut().filter(|_| depth > 0) else {
-            let facts = position.facts_in(self.variant, &mut self.scratch);
-            if facts.moves.is_empty() {
+            self.leaf.clear();
+            self.variant.legal_moves(position, &mut self.leaf);
+            if self.leaf.is_empty() {
                 return terminal(position, ply);
             }
+            let facts = position.facts_in(self.variant, &mut self.scratch);
             return eval::centipawns(self.evaluator.value(position, &facts));
         };
         moves.clear();
@@ -85,6 +88,7 @@ pub fn pick(game: &Game, limits: &Limits, evaluator: &dyn Evaluator) -> Option<M
         evaluator,
         limits,
         scratch: Scratch::new(),
+        leaf: MoveList::new(),
         nodes: 0,
     };
     for depth in 1..=max_depth {
