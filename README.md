@@ -6,8 +6,8 @@
 A chess engine that plays from a learned evaluation, and the trainer that produces it.
 
 The engine is Rust: a UCI front end, a search, and an evaluator the net plugs into. The trainer is
-Python: it reads the Lichess evaluation dump, turns positions into feature rows, and fits the net
-the engine loads.
+Python: it reads the Lichess evaluation dump, stores each position as esca's typed fact arrays, and
+fits the net the engine loads.
 
 Relies on [`esca`](https://github.com/AnglerfishChess/esca) — the chess library both sides read
 positions through: rules, position facts, PGN, opening books and a UCI client, as the `esca` crate
@@ -34,8 +34,10 @@ uvx ruff format --check .
 uvx pyrefly check
 ```
 
-Train the net over the Lichess evaluation dump — see [`docs/training.md`](docs/training.md):
+Build shards out of the Lichess evaluation dump, then train the net on them — see
+[`docs/training.md`](docs/training.md):
 ```sh
+uv run python -m pyanglerfish.build --help
 uv run python -m pyanglerfish.train --help
 ```
 

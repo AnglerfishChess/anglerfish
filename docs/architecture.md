@@ -12,7 +12,8 @@ the `esca` crate on crates.io and the `esca` package on PyPI.
 ```
 anglerfish/
   pyproject.toml        hatchling, the pure-Python side
-  pyanglerfish/         the trainer: data, scale, model, train  (training.md)
+  pyanglerfish/         the trainer: dump, build, shards, data,
+                        features, moves, scale, model, train     (training.md)
   tests/                the trainer's tests
   rs_anglerfish/        Cargo workspace root
     Cargo.toml          [workspace] members
@@ -53,7 +54,8 @@ note.
 4. The trainer takes the `esca` wheel as an ordinary dependency; nothing here
    builds it.
 5. Versions on both sides are independent of `esca`'s; the coupling that
-   matters is `schema_id`.
+   matters is the tensor layout, which a shard's manifest and a checkpoint's
+   `layout_hash` pin.
 6. Every dependency in the tree carries a permissive licence (MIT/Apache/BSD-class).
 7. `cargo metadata` licence check runs in CI on every crate.
 
@@ -63,17 +65,17 @@ note.
 
 Answers "what is true about this position" and "what is true about this move":
 `Variant` (`Classic`, `Chess960`), `Position`, `Game`, `Move`, `SquareSet`,
-`Facts`, `Schema`, and the versioned `f32` row a net eats. Its API, vocabulary
-and feature schema are documented in
+`ByColour`, `Facts`, the annotated moves, and the typed tensor export a net
+eats. Its API, vocabulary and facts are documented in
 [its own repository](https://github.com/AnglerfishChess/esca), which is also
 where its tests, fixtures and benchmarks live.
 
 What this project relies on beyond the types: `Position::facts_in` allocates
 nothing and reuses a caller-owned `Scratch`, so a search node extracts facts
-without touching the allocator; rows in the batch encoders are independent, so
-the trainer parallelises and the library spawns no threads; `schema_id` pins
-the row shape, so a checkpoint and an installed `esca` either agree or the load
-fails.
+without touching the allocator; every fact names the colour it is about, so a
+position reads the same whoever is to move; and each array of the tensor export
+keeps the type its fact was declared with, so what the trainer feeds a net is
+esca's own layout and not an encoding of it.
 
 ---
 
@@ -126,20 +128,22 @@ and takes the compiled `esca` as a plain wheel:
 
 ```toml
 [project]
-dependencies = ["esca>=0.3,<0.4", …]
+dependencies = ["esca[tensors]~=0.4.0", …]
 ```
 
+The `tensors` extra is `esca.tensors` and its NumPy dependency.
 `uv sync --all-groups` installs it; a newer `esca` reaches the trainer through
-`uv lock`, and a `schema_id` change through a retrained net.
+`uv lock`, and a layout change through rebuilt shards and a retrained net.
 
 ---
 
 ## 6. `anglerfish-nn` — the net (phase 2)
 
-Loads a checkpoint (weights plus the schema manifest), verifies `schema_id`
-against `esca::Schema::v1().id()`, refuses a mismatch, and implements
-`Evaluator` and `Policy`. Format and inference backend are chosen when there
-is a net to load.
+Loads a checkpoint (weights plus the manifest naming the arrays it was
+trained on), verifies that the installed `esca` answers those arrays with the
+same types and shapes, refuses a mismatch, and implements `Evaluator` and
+`Policy`. Format and inference backend are chosen when there is a net to
+load.
 
 ---
 
@@ -148,7 +152,7 @@ is a net to load.
 | Kind | What |
 |---|---|
 | **Engine** | Inherited from anglerfry: legality of every played move in self-play, under both variants; protocol behaviour driven over the binary's stdin and stdout; `Limits` read from any `go` line under `proptest`; UCI conformance via `uci-test-suite`. |
-| **Trainer** | `pytest` over a synthetic dump: the read pipeline and its split filters, the fitted value scale, the net's shapes and its masking of padded moves, and the checkpoint round-trip including the `schema_id` refusal. |
+| **Trainer** | `pytest` over a synthetic dump: the dump reader, the shard round-trip and the manifest's refusal of another layout, the split filters, the fitted value scale, a batch typed as `esca.tensors.layout()` says, the net's shapes and its masking of padded moves, and the checkpoint round-trip including the layout refusal. |
 
 ---
 
@@ -156,7 +160,7 @@ is a net to load.
 
 | Milestone | Contents |
 |---|---|
-| **M1** | `esca` core: `Variant` with `Classic` and `Chess960`, `Position`, `Game`, UCI and SAN move text, `Facts` with the v0 groups `state`, `material`, `pawns`, `pieces`, `king`, `mobility`, `attacks`, `tactics`, `planes`, `MoveFacts`, `Schema` and `schema_id`, batch encoding. Feature `python`: the module and its stubs. Feature `lichess`: the dump reader. `anglerfish-core` copied from anglerfry with the `Evaluator`/`Policy` traits and the material evaluator behind them. Differential, property, stability tests. Benchmarks. |
-| **M2** | The trainer of [`training.md`](training.md): the dump pipeline, the two-head net, the fitted value scale and the checkpoint manifest. Then `anglerfish-nn`, the schema check on load, and the first trained net serving `Evaluator`. |
+| **M1** | `esca` core: `Variant` with `Classic` and `Chess960`, `Position`, `Game`, UCI and SAN move text, the typed `Facts` groups and the annotated moves, the catalogue and the tensor export. Feature `python`: the module and its stubs. Feature `lichess`: the dump reader. `anglerfish-core` copied from anglerfry with the `Evaluator`/`Policy` traits and the material evaluator behind them. Differential, property, stability tests. Benchmarks. |
+| **M2** | The trainer of [`training.md`](training.md): the shard pipeline, the two-head net, the fitted value scale and the checkpoint manifest. Then `anglerfish-nn`, the layout check on load, and the first trained net serving `Evaluator`. |
 | **M3** | The search family, chosen on measurements: transposition table, time management, quiescence and SEE if alpha-beta wins; tree, PUCT and leaf batching if MCTS does. |
 | **M4** | `esca` published to crates.io and PyPI: done, and continued in [its own repository](https://github.com/AnglerfishChess/esca). |

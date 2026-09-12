@@ -16,7 +16,7 @@
   ],
   "rules": [
     "anglerfish is the engine (Rust crate anglerfish-core, binary `anglerfish`, UCI) and the trainer (Python package pyanglerfish); the chess library both use is esca, from crates.io and PyPI: https://github.com/AnglerfishChess/esca.",
-    "The trainer streams the Lichess evaluation dump through esca.lichess.batches, encodes positions with esca's schema, and fits a two-head net (value, policy); the checkpoint carries the schema_id the engine checks on load.",
+    "The trainer reads the Lichess evaluation dump with zstandard, stores each position as esca's typed fact arrays in packed safetensors shards, and fits a two-head net (value, policy) whose first layer casts those arrays; the checkpoint carries the array names and a digest of their types and shapes, which the engine checks on load.",
     "Nothing is published from this repository yet; versions are independent of esca's."
   ]
 }
