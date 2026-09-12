@@ -1,4 +1,4 @@
-"""Training the two-head net on the Lichess evaluation dump."""
+"""Training the two-head net on shards of the Lichess evaluation dump."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import itertools
 import math
 import random
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .data import SCALE_ROWS, DataConfig, EvalBatches, fit_scale_on_dump, holdout_keys, resolve_groups
+from .data import SCALE_ROWS, Batch, DataConfig, ShardBatches, fit_scale_on_shards
+from .features import layout_hash
 from .model import NetConfig, TwoHeadNet
 
 __all__ = [
@@ -78,22 +79,15 @@ def pick_device(name: str = "auto") -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def _to(batch: dict[str, torch.Tensor], device: torch.device) -> dict[str, torch.Tensor]:
-    return {key: value.to(device, non_blocking=True) for key, value in batch.items()}
-
-
-def _losses(
-    net: TwoHeadNet,
-    batch: dict[str, torch.Tensor],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    value, policy = net(batch["features"], batch["moves"], batch["move_mask"])
-    value_loss = F.binary_cross_entropy_with_logits(value, batch["value"])
-    policy_loss = F.cross_entropy(policy, batch["best"])
+def _losses(net: TwoHeadNet, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    value, policy = net(batch.facts, batch.moves, batch.move_mask)
+    value_loss = F.binary_cross_entropy_with_logits(value, batch.value)
+    policy_loss = F.cross_entropy(policy, batch.best)
     return value, policy, torch.stack((value_loss, policy_loss))
 
 
 @torch.no_grad()
-def evaluate(net: TwoHeadNet, batches: list[dict[str, torch.Tensor]], device: torch.device) -> Metrics:
+def evaluate(net: TwoHeadNet, batches: list[Batch], device: torch.device) -> Metrics:
     """The metrics of esca's `features.md` §7 over the given batches."""
     was_training = net.training
     net.eval()
@@ -101,18 +95,18 @@ def evaluate(net: TwoHeadNet, batches: list[dict[str, torch.Tensor]], device: to
     value_loss = policy_loss = 0.0
     absolute = squared = signs = top1 = top3 = 0.0
     for held in batches:
-        batch = _to(held, device)
+        batch = held.to(device)
         value, policy, losses = _losses(net, batch)
-        count = batch["value"].shape[0]
+        count = len(batch)
         rows += count
         value_loss += float(losses[0]) * count
         policy_loss += float(losses[1]) * count
         predicted = torch.sigmoid(value)
-        error = predicted - batch["value"]
+        error = predicted - batch.value
         absolute += float(error.abs().sum())
         squared += float((error * error).sum())
-        signs += float((torch.sign(predicted - 0.5) == torch.sign(batch["value"] - 0.5)).sum())
-        wanted = batch["best"]
+        signs += float((torch.sign(predicted - 0.5) == torch.sign(batch.value - 0.5)).sum())
+        wanted = batch.best
         ranked = policy.topk(min(3, policy.shape[1]), dim=1).indices
         top1 += float((ranked[:, 0] == wanted).sum())
         top3 += float((ranked == wanted.unsqueeze(1)).any(dim=1).sum())
@@ -132,21 +126,14 @@ def evaluate(net: TwoHeadNet, batches: list[dict[str, torch.Tensor]], device: to
     )
 
 
-def save_checkpoint(
-    path: Path,
-    net: TwoHeadNet,
-    *,
-    groups: tuple[str, ...],
-    scale: float,
-    step: int,
-) -> None:
+def save_checkpoint(path: Path, net: TwoHeadNet, *, scale: float, step: int) -> None:
     """Writes the weights together with the manifest a loader checks."""
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "schema_id": esca.SCHEMA_ID,
-            "schema_semver": esca.SCHEMA.semver,
-            "groups": list(groups),
+            "esca": esca.__version__,
+            "features": list(net.config.features),
+            "layout_hash": layout_hash(net.config.features),
             "value_scale": scale,
             "net": net.config.as_dict(),
             "step": step,
@@ -159,20 +146,21 @@ def save_checkpoint(
 def load_checkpoint(path: Path, *, device: torch.device | str = "cpu") -> tuple[TwoHeadNet, dict[str, Any]]:
     """The net a checkpoint holds, and its manifest.
 
-    Raises `ValueError` when the checkpoint was trained against a different
-    feature schema than the installed `esca` emits.
+    Raises `ValueError` when the installed esca answers the checkpoint's own
+    fact arrays with other types or shapes than it was trained on.
     """
     manifest: dict[str, Any] = torch.load(path, map_location=device, weights_only=False)
-    stored = manifest.get("schema_id")
-    if stored != esca.SCHEMA_ID:
-        raise ValueError(f"checkpoint schema {stored} is not the installed schema {esca.SCHEMA_ID}")
     net = TwoHeadNet(NetConfig.from_dict(manifest["net"]))
+    stored = manifest.get("layout_hash")
+    current = layout_hash(net.config.features)
+    if stored != current:
+        raise ValueError(f"checkpoint layout {stored} is not the installed layout {current}")
     net.load_state_dict(manifest["state_dict"])
     net.to(device)
     return net, manifest
 
 
-def _endless(dataset: EvalBatches) -> Iterator[dict[str, torch.Tensor]]:
+def _endless(dataset: ShardBatches) -> Iterator[Batch]:
     while True:
         empty = True
         for batch in dataset:
@@ -210,14 +198,11 @@ def train(
     optimiser = torch.optim.AdamW(net.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     scheduler = _schedule(optimiser, config)
 
-    held_out = holdout_keys(data)
-    if log:
-        print(f"held-out positions {len(held_out)}")
-    training = EvalBatches(data, scale=scale, split="train", holdout=held_out)
-    holdout = EvalBatches(data, scale=scale, split="holdout", shuffle=False)
+    training = ShardBatches(data, scale=scale, split="train")
+    holdout = ShardBatches(data, scale=scale, split="holdout", shuffle=False)
     held = list(itertools.islice(iter(holdout), config.eval_batches))
     if not held:
-        raise ValueError("the held-out split is empty; lower --holdout-every or raise --max-rows")
+        raise ValueError("the held-out split is empty; build with a smaller --holdout-every")
 
     metrics = evaluate(net, held, device)
     if log:
@@ -226,7 +211,7 @@ def train(
     running = torch.zeros(2)
     seen = 0
     for step, raw in enumerate(itertools.islice(_endless(training), config.steps), start=1):
-        batch = _to(raw, device)
+        batch = raw.to(device)
         _, _, losses = _losses(net, batch)
         loss = losses[0] + config.policy_weight * losses[1]
         optimiser.zero_grad(set_to_none=True)
@@ -249,28 +234,15 @@ def train(
             if log:
                 print(f"step {step}: held out: {metrics}")
             if checkpoint is not None:
-                save_checkpoint(checkpoint, net, groups=data.group_list, scale=scale, step=step)
-    if log:
-        counts = training.counts
-        print(
-            f"train rows read {counts.read}, kept {counts.kept}, "
-            f"held out elsewhere {counts.leaked}, best move not legal {counts.unmatched}; "
-            f"held-out rows read {holdout.counts.read}, kept {holdout.counts.kept}, "
-            f"repeated {holdout.counts.duplicate}, unmatched {holdout.counts.unmatched}"
-        )
+                save_checkpoint(checkpoint, net, scale=scale, step=step)
     return metrics
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the Anglerfish two-head net.")
-    parser.add_argument("--dump", type=Path, required=True, help="the Lichess evaluation dump")
-    parser.add_argument("--groups", help="comma-separated schema groups; default is every group")
-    parser.add_argument("--min-depth", type=int, default=20)
-    parser.add_argument("--holdout-every", type=int, default=64, help="one record index in this many is held out")
-    parser.add_argument("--max-rows", type=int, help="stop after this many dump rows, both splits together")
+    parser.add_argument("--shards", type=Path, required=True, help="the directory pyanglerfish.build wrote")
+    parser.add_argument("--features", help="comma-separated array names; default is every array the shards carry")
     parser.add_argument("--batch-size", type=int, default=256)
-    parser.add_argument("--shuffle-buffer", type=int, default=4096)
-    parser.add_argument("--read-batch", type=int, default=4096, help="rows the dump reader encodes at a time")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-2)
@@ -295,18 +267,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """The `python -m pyanglerfish.train` entry point."""
     args = _parser().parse_args(argv)
-    groups = resolve_groups(tuple(args.groups.split(",")) if args.groups else None)
-    data = DataConfig(
-        dump=args.dump,
-        groups=groups,
-        min_depth=args.min_depth,
-        holdout_every=args.holdout_every,
-        batch_size=args.batch_size,
-        shuffle_buffer=args.shuffle_buffer,
-        read_batch=args.read_batch,
-        max_rows=args.max_rows,
-        seed=args.seed,
-    )
+    selected = tuple(args.features.split(",")) if args.features else None
+    data = DataConfig(shards=args.shards, features=selected, batch_size=args.batch_size, seed=args.seed)
     config = TrainConfig(
         steps=args.steps,
         learning_rate=args.lr,
@@ -322,24 +284,25 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.resume is not None:
         net, manifest = load_checkpoint(args.resume, device=device)
-        if tuple(manifest["groups"]) != groups:
-            raise ValueError(f"checkpoint groups {manifest['groups']} are not {list(groups)}")
+        if selected is not None and tuple(manifest["features"]) != selected:
+            raise ValueError("the checkpoint was trained on other arrays than --features names")
+        # The net reads what it was trained on, and the shards must carry it.
+        data = replace(data, features=tuple(manifest["features"]))
         scale = float(manifest["value_scale"])
         print(f"resumed from {args.resume} at step {manifest['step']}, value scale {scale:.1f}")
     else:
-        scale = args.scale if args.scale is not None else fit_scale_on_dump(data, rows=args.scale_rows)
+        scale = args.scale if args.scale is not None else fit_scale_on_shards(args.shards, rows=args.scale_rows)
         print(f"value scale {scale:.1f}")
         net = TwoHeadNet(
             NetConfig(
-                input_width=data.width,
-                move_width=esca.MOVE_WIDTH,
-                trunk=tuple(int(width) for width in args.trunk.split(",") if width),
+                features=tuple(data.selection()),
+                trunk=tuple(int(size) for size in args.trunk.split(",") if size),
                 embedding=args.embedding,
                 policy_hidden=args.policy_hidden,
                 dropout=args.dropout,
             )
         )
-    print(f"device {device}, groups {','.join(groups)}, input width {data.width}")
+    print(f"device {device}, {len(net.config.features)} arrays, input width {net.config.input_width}")
     train(net, data, config, scale=scale, device=device, checkpoint=args.checkpoint)
 
 

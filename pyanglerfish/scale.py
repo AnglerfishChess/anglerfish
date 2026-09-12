@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["MATE_HORIZON", "fit_scale", "win_probability"]
+__all__ = ["MATE_HORIZON", "Labels", "fit_scale", "win_probability"]
+
+#: A column of labels, however wide and however typed the reader kept it.
+type Labels = NDArray[np.floating[Any]] | NDArray[np.integer[Any]]
 
 #: Moves-to-mate beyond which a mate label carries no more weight.
 MATE_HORIZON = 1000.0
@@ -19,11 +24,7 @@ def _sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
     return 1.0 / (1.0 + np.exp(-np.clip(x, -40.0, 40.0)))
 
 
-def win_probability(
-    cp: NDArray[np.float32] | NDArray[np.float64],
-    mate: NDArray[np.float32] | NDArray[np.float64],
-    scale: float,
-) -> NDArray[np.float32]:
+def win_probability(cp: Labels, mate: Labels, scale: float) -> NDArray[np.float32]:
     """The value target in [0, 1], side-relative, one value per row.
 
     A row is a mate row where `mate` is not zero, and a centipawn row
@@ -37,7 +38,7 @@ def win_probability(
     return np.where(mate != 0.0, 0.5 * (1.0 + signed), _sigmoid(cp / scale)).astype(np.float32)
 
 
-def fit_scale(cp: NDArray[np.float32] | NDArray[np.float64], *, tolerance: float = 1e-4) -> float:
+def fit_scale(cp: Labels, *, tolerance: float = 1e-4) -> float:
     """The maximum-likelihood scale of a zero-centred logistic over `cp`.
 
     Under that fit `sigmoid(cp / scale)` is the sample's own probability

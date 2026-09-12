@@ -1,4 +1,4 @@
-"""A few steps of the real loop over the synthetic dump."""
+"""A few steps of the real loop over the sample's shards."""
 
 from __future__ import annotations
 
@@ -9,22 +9,16 @@ import torch
 from pyanglerfish import DataConfig, NetConfig, TwoHeadNet
 from pyanglerfish.train import TrainConfig, load_checkpoint, main, pick_device, train
 
-
-def settings(dump: Path) -> DataConfig:
-    return DataConfig(
-        dump=dump,
-        groups=("state", "material"),
-        min_depth=0,
-        holdout_every=2,
-        batch_size=2,
-        shuffle_buffer=4,
-        read_batch=8,
-    )
+FEATURES = ("state.in_check", "material.pawns", "pawns.passed")
 
 
-def test_a_short_run_reports_metrics_and_writes_a_checkpoint(sample_dump: Path, tmp_path: Path) -> None:
-    data = settings(sample_dump)
-    net = TwoHeadNet(NetConfig(input_width=data.width, trunk=(16,), embedding=8, policy_hidden=4))
+def settings(directory: Path) -> DataConfig:
+    return DataConfig(shards=directory, features=FEATURES, batch_size=2)
+
+
+def test_a_short_run_reports_metrics_and_writes_a_checkpoint(sample_shards: Path, tmp_path: Path) -> None:
+    data = settings(sample_shards)
+    net = TwoHeadNet(NetConfig(features=FEATURES, trunk=(16,), embedding=8, policy_hidden=4))
     checkpoint = tmp_path / "net.pt"
     metrics = train(
         net,
@@ -42,20 +36,16 @@ def test_a_short_run_reports_metrics_and_writes_a_checkpoint(sample_dump: Path, 
 
     loaded, manifest = load_checkpoint(checkpoint)
     assert manifest["step"] == 6
-    assert manifest["groups"] == list(data.group_list)
+    assert manifest["features"] == list(FEATURES)
     assert loaded.config == net.config
 
 
-def test_the_cli_trains_and_resumes(sample_dump: Path, tmp_path: Path) -> None:
+def test_the_cli_trains_and_resumes(sample_shards: Path, tmp_path: Path) -> None:
     checkpoint = tmp_path / "cli.pt"
     argv = [
-        "--dump", str(sample_dump),
-        "--groups", "state,material",
-        "--min-depth", "0",
-        "--holdout-every", "2",
+        "--shards", str(sample_shards),
+        "--features", ",".join(FEATURES),
         "--batch-size", "2",
-        "--read-batch", "8",
-        "--shuffle-buffer", "4",
         "--steps", "4",
         "--eval-every", "4",
         "--eval-batches", "1",
